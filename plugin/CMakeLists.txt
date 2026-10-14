@@ -340,6 +340,7 @@ target_sources(${PROJECT_NAME}
         src/Processor.cpp
         include/MidiMapper.h
         src/MidiMapper.cpp
+        src/ModelDiskCache.cpp
         src/ProcessorChain.cpp
         src/ProcessorHistory.cpp
         src/ProcessorPresets.cpp

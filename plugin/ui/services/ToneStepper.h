@@ -13,11 +13,18 @@
 // Rapid presses: every press moves the shown cursor at once and starts its
 // own resolve; replies older than the block's latest press are dropped, so
 // the last press always wins and nothing lands out of order.
+//
+// Instant switching: once a block lands, its next three and previous one
+// results are resolved in the background (memoized here, so stepping to
+// one skips the API round trips) and their model files fetched into
+// native's disk cache (so the load skips the download too).
 #pragma once
 
 #include <juce_core/juce_core.h>
 
 #include <map>
+#include <set>
+#include <vector>
 #include <optional>
 #include <string>
 
@@ -44,7 +51,16 @@ public:
     virtual void stepperChanged() = 0;
   };
 
-  ToneStepper(ChainStore& chain, ToneSession& session, ConnectionGate& connection, Toast& toast);
+  ToneStepper(Backend& backend, ChainStore& chain, ToneSession& session, ConnectionGate& connection, Toast& toast);
+
+  // Neighbours prefetched around a landed cursor: this many ahead, and one
+  // behind (stepping back is rarer, and the previous tone is often the one
+  // just left, already in the cache).
+  static constexpr int kPrefetchAhead = 3, kPrefetchBehind = 1;
+  static constexpr size_t kMemoSize = 64;
+  // A resolved tone's model URL may be signed with an expiry; past this a
+  // step resolves afresh instead of trusting the memo.
+  static constexpr juce::int64 kMemoMaxAgeMs = 10 * 60 * 1000;
   ~ToneStepper();
 
   void addListener(Listener* l) { listeners_.add(l); }
@@ -58,6 +74,10 @@ public:
   // The block arrow keys step: the last one stepped, picked or opened.
   const std::string& focusBlock() const { return focus_; }
   void setFocusBlock(const std::string& blockId);
+
+  // Warm the neighbours of the block's cursor (after any landing: a step,
+  // or a pick from the browser).
+  void prefetchAround(const std::string& blockId);
 
   // The keyboard's way in (← / → step the focused block, Shift+← / → move
   // the focus between blocks that have a cursor). False when there is
@@ -80,14 +100,22 @@ private:
   void resolve(const std::string& blockId, juce::var context, int index);
   void fetchPage(const std::string& blockId, const juce::var& context, int page, bool fromEnd);
   juce::var contextOf(const std::string& blockId) const;
+  void remember(const Tone& tone);
+  const Tone* memo(int toneId) const;
+  void prefetchTone(int toneId);
   void notify();
 
+  Backend& backend_;
   ChainStore& chain_;
   ToneSession& session_;
   ConnectionGate& connection_;
   Toast& toast_;
   std::map<std::string, Pending> pending_;
   std::string focus_;
+  std::map<int, Tone> memo_;      // resolved tones by id (first model embedded)
+  std::vector<int> memoOrder_;    // oldest first, for the size cap
+  std::map<int, juce::int64> memoTime_;  // when each was resolved
+  std::set<int> resolving_;       // prefetch resolves in flight
   juce::ListenerList<Listener> listeners_;
   AsyncScope scope_;
 };

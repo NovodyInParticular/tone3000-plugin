@@ -742,7 +742,8 @@ void TONE3000Processor::refreshLocalStashCopy(const juce::String& modelUrl,
     juce::Logger::writeToLog("[LocalLoad] Couldn't restore stash copy " + stash.getFileName());
 }
 
-std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& modelUrl) {
+std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& modelUrl,
+                                                          const std::function<bool()>& shouldAbort) {
   juce::URL url(modelUrl);
 
   // Local-file models (drag-and-drop loads) resolve to their stash copy:
@@ -762,6 +763,12 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
     stash.setLastModificationTime(juce::Time::getCurrentTime());
     const auto* bytes = static_cast<const uint8_t*>(data.getData());
     return std::vector<uint8_t>(bytes, bytes + data.getSize());
+  }
+
+  // A model fetched before (any session, any instance) loads from disk.
+  if (auto cached = modelDiskCache->read(modelUrl); !cached.empty()) {
+    DBG("[ModelLoader] Disk cache hit: " << modelUrl);
+    return cached;
   }
 
   // The TONE3000 API requires a Bearer token on `model_url` requests;
@@ -801,6 +808,8 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
   const juce::uint32 readDeadline = juce::Time::getMillisecondCounter() + 120000;
 
   while (!stream->isExhausted()) {
+    if (shouldAbort && shouldAbort())
+      return {};
     if (juce::Time::getMillisecondCounter() > readDeadline) {
       juce::Logger::writeToLog("[ModelLoader] Model download timed out: " + modelUrl);
       return {};
@@ -823,7 +832,37 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
   std::vector<uint8_t> result(memoryBlock.getSize());
   std::memcpy(result.data(), memoryBlock.getData(), memoryBlock.getSize());
 
+  // Cache the raw bytes; a bad file is still caught where it is prepared,
+  // and the cache's checksum only guards the bytes, not their meaning.
+  modelDiskCache->write(modelUrl, result);
   return result;
+}
+
+void TONE3000Processor::prefetchModel(const juce::String& modelUrl) {
+  const auto key = ModelDiskCache::keyFor(modelUrl);
+  if (key.isEmpty() || modelDiskCache->contains(modelUrl))
+    return;
+  {
+    std::lock_guard<std::mutex> lock(prefetchMutex);
+    if (prefetchInFlight.count(key) != 0 || prefetchInFlight.size() >= kMaxPrefetchQueue)
+      return;
+    prefetchInFlight.insert(key);
+  }
+
+  struct PrefetchJob : public juce::ThreadPoolJob {
+    TONE3000Processor& processor;
+    const juce::String url, key;
+    PrefetchJob(TONE3000Processor& p, juce::String u, juce::String k)
+        : ThreadPoolJob("Model Prefetch"), processor(p), url(std::move(u)), key(std::move(k)) {}
+    JobStatus runJob() override {
+      if (!shouldExit())
+        processor.fetchModelFromUrl(url, [this] { return shouldExit(); });
+      std::lock_guard<std::mutex> lock(processor.prefetchMutex);
+      processor.prefetchInFlight.erase(key);
+      return jobHasFinished;
+    }
+  };
+  prefetchPool.addJob(new PrefetchJob(*this, modelUrl, key), true);
 }
 
 

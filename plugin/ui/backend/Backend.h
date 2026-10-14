@@ -49,6 +49,8 @@ public:
   virtual juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
                                       const std::string& targetInsertId) = 0;
   virtual bool swapTone(const std::string& blockId, const juce::String& toneJson, const juce::var& browse = {}) = 0;
+  // Fetch a catalog model into the disk cache ahead of need (best effort).
+  virtual void prefetchModel(const juce::String& modelUrl) = 0;
   virtual bool refreshToneMetadata(const juce::String& toneJson) = 0;
   virtual bool switchModel(const std::string& blockId, int modelId, const juce::var& model) = 0;
   virtual bool retryModelLoad(const std::string& blockId) = 0;

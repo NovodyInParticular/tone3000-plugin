@@ -1000,9 +1000,23 @@ struct ToneStepperTests : juce::UnitTest {
   struct SteppingBackend : MockBackend {
     using MockBackend::MockBackend;
     std::vector<Swap> swaps;
+    juce::StringArray prefetched;
+    void prefetchModel(const juce::String& url) override { prefetched.add(url); }
+    // Applies the swap to the chain like native would: the block's tone id
+    // and cursor move, so the stepper reads the landed state back.
     bool swapTone(const std::string& id, const juce::String& json, const juce::var& browse) override {
-      swaps.push_back({id, static_cast<int>(juce::JSON::parse(json)["id"]), static_cast<int>(browse["index"]),
+      const auto tone = juce::JSON::parse(json);
+      swaps.push_back({id, static_cast<int>(tone["id"]), static_cast<int>(browse["index"]),
                        static_cast<int>(browse["page"])});
+      auto chain = getChainState(-1).clone();
+      if (auto* lane = chain["chain"].getArray())
+        for (auto& item : *lane)
+          if (item["blockId"].toString() == juce::String(id)) {
+            item["tone"].getDynamicObject()->setProperty("id", tone["id"]);
+            item.getDynamicObject()->setProperty("browse", browse);
+          }
+      chain.getDynamicObject()->setProperty("revision", static_cast<int>(chain["revision"]) + 1);
+      setChain(chain);
       return true;
     }
   };
@@ -1010,13 +1024,16 @@ struct ToneStepperTests : juce::UnitTest {
     bool hold = false;
     std::vector<std::pair<int, Reply<Tone>>> held;
     std::vector<int> pages;
+    std::vector<int> resolved;  // every resolveTone call, in order
     bool authenticated() const override { return true; }
+    void ensureNativeAuth(Done done) override { done({}); }
     static Tone tone(int id, const char* format = "nam") {
       return Tone::parse(juce::JSON::parse("{\"id\":" + juce::String(id) + ",\"title\":\"T" + juce::String(id) +
                                            "\",\"format\":\"" + format + "\",\"a2_models_count\":1,\"models\":[{\"id\":" +
-                                           juce::String(id * 10) + ",\"name\":\"m\",\"model_url\":\"https://x.invalid/m\"}]}"));
+                                           juce::String(id * 10) + ",\"name\":\"m\",\"model_url\":\"https://x.invalid/m" + juce::String(id) + "\"}]}"));
     }
     void resolveTone(int id, Reply<Tone> reply) override {
+      resolved.push_back(id);
       if (hold) held.emplace_back(id, std::move(reply));
       else reply(Result<Tone>::ok(tone(id)));
     }
@@ -1056,7 +1073,7 @@ struct ToneStepperTests : juce::UnitTest {
       ChainStore chain{backend, clock};
       ConnectionGate gate{session};
       Toast toast;
-      ToneStepper stepper{chain, session, gate, toast};
+      ToneStepper stepper{backend, chain, session, gate, toast};
       explicit Rig(const juce::var& data) : backend(data) {}
     };
 
@@ -1130,6 +1147,23 @@ struct ToneStepperTests : juce::UnitTest {
       expectEquals(static_cast<int>(rig.backend.swaps.size()), 1);
       expectEquals(rig.backend.swaps[0].tone, 106);
       expect(!rig.stepper.cursor("blk-1")->busy);
+    }
+
+    beginTest("a landing prefetches the next three and previous one; a prefetched step skips the API");
+    {
+      Rig rig(scenario->data);
+      rig.stepper.step("blk-1", +1);  // lands 105 at index 4: ahead is 106 only, behind 104
+      expect(rig.backend.prefetched.contains("https://x.invalid/m106"));
+      expect(rig.backend.prefetched.contains("https://x.invalid/m104"));
+      expectEquals(rig.backend.prefetched.size(), 2);
+      // 106 was memoized by the prefetch: no new resolve, straight to the swap.
+      const auto calls = rig.session.resolved.size();
+      rig.session.hold = true;
+      rig.stepper.step("blk-1", +1);
+      expectEquals(static_cast<int>(rig.session.resolved.size()), static_cast<int>(calls));
+      expectEquals(static_cast<int>(rig.backend.swaps.size()), 2);
+      expectEquals(rig.backend.swaps[1].tone, 106);
+      expectEquals(rig.backend.swaps[1].index, 5);
     }
 
     beginTest("cursors are per block, and the keyboard focus cycles blocks with one");

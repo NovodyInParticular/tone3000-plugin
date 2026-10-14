@@ -64,9 +64,12 @@ public:
         modelLoads(chain, t),
         connection(t),
         loadFlow(chain, connection, t),
-        stepper(chain, t, connection, toast),
+        stepper(b, chain, t, connection, toast),
         updates(t, prefs, b.pluginVersion(), updateNotice) {
-    loadFlow.onToneLanded = [this](const std::string& id) { stepper.setFocusBlock(id); };
+    loadFlow.onToneLanded = [this](const std::string& id) {
+      stepper.setFocusBlock(id);
+      stepper.prefetchAround(id);
+    };
   }
 
   Backend& backend;

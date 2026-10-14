@@ -28,8 +28,9 @@ juce::var withIndex(const juce::var& context, int index) {
 
 }  // namespace
 
-ToneStepper::ToneStepper(ChainStore& chain, ToneSession& session, ConnectionGate& connection, Toast& toast)
-    : chain_(chain), session_(session), connection_(connection), toast_(toast) {}
+ToneStepper::ToneStepper(Backend& backend, ChainStore& chain, ToneSession& session, ConnectionGate& connection,
+                         Toast& toast)
+    : backend_(backend), chain_(chain), session_(session), connection_(connection), toast_(toast) {}
 
 ToneStepper::~ToneStepper() = default;
 
@@ -179,21 +180,78 @@ void ToneStepper::resolve(const std::string& blockId, juce::var context, int ind
   notify();
 
   const int toneId = static_cast<int>((*tonesOf(context))[index]["id"]);
-  connection_.requireConnection([this, blockId, toneId, context, index, generation] {
-    session_.resolveTone(toneId, scope_.wrap([this, blockId, context, index, generation](Result<Tone> tone) {
-      const auto it = pending_.find(blockId);
-      if (it == pending_.end() || it->second.generation != generation) return;  // a newer press won
-      pending_.erase(it);
-      if (!tone || tone->models.empty()) {
-        notify();
-        toast_.show(tone ? juce::String("That tone has no loadable model") : tone.error);
-        return;
-      }
-      if (!chain_.swapTone(blockId, tone->toJson(), withIndex(context, index)))
-        toast_.show("That block is gone");
+  auto landResolved = [this, blockId, context, index, generation](Result<Tone> tone) {
+    const auto it = pending_.find(blockId);
+    if (it == pending_.end() || it->second.generation != generation) return;  // a newer press won
+    pending_.erase(it);
+    if (!tone || tone->models.empty()) {
       notify();
-    }));
+      toast_.show(tone ? juce::String("That tone has no loadable model") : tone.error);
+      return;
+    }
+    remember(*tone);
+    if (!chain_.swapTone(blockId, tone->toJson(), withIndex(context, index))) toast_.show("That block is gone");
+    notify();
+    prefetchAround(blockId);
+  };
+
+  connection_.requireConnection([this, toneId, landResolved] {
+    // Prefetched: only the token push is left (native may still need to
+    // download, if the prefetch hasn't finished).
+    if (const auto* known = memo(toneId)) {
+      session_.ensureNativeAuth(scope_.wrap([landResolved, tone = *known](const juce::String& error) {
+        landResolved(error.isEmpty() ? Result<Tone>::ok(tone) : Result<Tone>::fail(error));
+      }));
+      return;
+    }
+    session_.resolveTone(toneId, scope_.wrap(landResolved));
   });
+}
+
+void ToneStepper::prefetchAround(const std::string& blockId) {
+  const auto context = contextOf(blockId);
+  const auto* tones = tonesOf(context);
+  if (tones == nullptr) return;
+  const int index = intOf(context, "index", 0);
+  for (int offset = 1; offset <= kPrefetchAhead + kPrefetchBehind; ++offset) {
+    const int at = offset <= kPrefetchAhead ? index + offset : index - (offset - kPrefetchAhead);
+    if (at < 0 || at >= tones->size() || !loadable((*tones)[at])) continue;
+    prefetchTone(static_cast<int>((*tones)[at]["id"]));
+  }
+}
+
+void ToneStepper::prefetchTone(int toneId) {
+  if (const auto* known = memo(toneId)) {
+    backend_.prefetchModel(known->models.front().modelUrl);
+    return;
+  }
+  if (!session_.authenticated() || !session_.online() || !resolving_.insert(toneId).second) return;
+  session_.resolveTone(toneId, scope_.wrap([this, toneId](Result<Tone> tone) {
+    resolving_.erase(toneId);
+    if (!tone || tone->models.empty()) return;  // best effort; a step resolves again
+    remember(*tone);
+    backend_.prefetchModel(tone->models.front().modelUrl);
+  }));
+}
+
+void ToneStepper::remember(const Tone& tone) {
+  if (tone.models.empty()) return;
+  if (memo_.count(tone.id) == 0) memoOrder_.push_back(tone.id);
+  memo_[tone.id] = tone;
+  memoTime_[tone.id] = juce::Time::currentTimeMillis();
+  while (memoOrder_.size() > kMemoSize) {
+    memo_.erase(memoOrder_.front());
+    memoTime_.erase(memoOrder_.front());
+    memoOrder_.erase(memoOrder_.begin());
+  }
+}
+
+const Tone* ToneStepper::memo(int toneId) const {
+  const auto it = memo_.find(toneId);
+  if (it == memo_.end()) return nullptr;
+  const auto at = memoTime_.find(toneId);
+  if (at == memoTime_.end() || juce::Time::currentTimeMillis() - at->second > kMemoMaxAgeMs) return nullptr;
+  return &it->second;
 }
 
 void ToneStepper::notify() {

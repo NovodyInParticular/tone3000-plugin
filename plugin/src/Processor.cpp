@@ -508,6 +508,9 @@ int TONE3000Processor::namEngineVoiceCount(const std::string& blockId) const {
 }
 
 TONE3000Processor::~TONE3000Processor() {
+  // Prefetches poll their job's exit flag between reads, so this returns
+  // within one network read instead of a whole download.
+  prefetchPool.removeAllJobs(true, 2000);
   parameters.removeParameterListener("osEnabled", this);
   parameters.removeParameterListener("osFactor", this);
   for (const auto& paramId : presetParameterIds())

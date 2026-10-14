@@ -33,6 +33,7 @@ public:
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
                               const std::string& targetInsertId) override;
   bool swapTone(const std::string& blockId, const juce::String& toneJson, const juce::var& browse = {}) override;
+  void prefetchModel(const juce::String& modelUrl) override;
   bool refreshToneMetadata(const juce::String& toneJson) override;
   bool switchModel(const std::string& blockId, int modelId, const juce::var& model) override;
   bool retryModelLoad(const std::string& blockId) override;

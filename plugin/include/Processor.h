@@ -29,6 +29,9 @@
 #include "StereoOffset.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
+#include <mutex>
+#include <set>
+#include "ModelDiskCache.h"
 
 class TONE3000Processor;
 
@@ -177,6 +180,14 @@ public:
   // result list to step through).
   bool swapTone(const std::string& blockId, const juce::String& toneJsonString,
                 const juce::var& browse = {});
+  // Fetch a catalog model into the disk cache ahead of need (the previous /
+  // next neighbours of a stepped block), so stepping to it loads without the
+  // network. No-op when cached, already queued, local, or the queue is full.
+  void prefetchModel(const juce::String& modelUrl);
+  static constexpr size_t kMaxPrefetchQueue = 6;
+  ModelDiskCache& diskCache() { return *modelDiskCache; }
+  // Tests point the cache at a scratch folder (before any load).
+  void setModelDiskCacheForTesting(std::unique_ptr<ModelDiskCache> cache) { modelDiskCache = std::move(cache); }
   // Best-effort tone metadata re-sync: merge a fresh /tones/{id} API payload
   // into every non-local block holding that tone (both lanes). The stored
   // models array is preserved per block (native persists only the active
@@ -538,7 +549,11 @@ private:
   juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
   
   // Tone loading helpers
-  std::vector<uint8_t> fetchModelFromUrl(const juce::String& modelUrl);
+  // Disk cache first (ModelDiskCache), then the network; a download is
+  // written back to the cache. `shouldAbort` is polled between reads so a
+  // pool shutting down never waits out a slow download.
+  std::vector<uint8_t> fetchModelFromUrl(const juce::String& modelUrl,
+                                         const std::function<bool()>& shouldAbort = {});
   // Cache-hit loads bypass fetchModelFromUrl, so this keeps the stash
   // honest for local models: recreates a missing stash copy from the cached
   // bytes and re-stamps an existing one's mtime (the GC's liveness signal).
@@ -1073,8 +1088,21 @@ private:
   juce::String accessToken;
   mutable juce::CriticalSection accessTokenMutex;
   
+  // Downloaded model files, shared by every instance and the standalone.
+  // Declared before the pools: their jobs use it, and members are destroyed
+  // in reverse order, so the pools (and their jobs) go first.
+  std::unique_ptr<ModelDiskCache> modelDiskCache =
+      std::make_unique<ModelDiskCache>(ModelDiskCache::defaultRoot());
+  std::mutex prefetchMutex;
+  std::set<juce::String> prefetchInFlight;  // cache keys queued or running
+
   // Thread pool for background model loading
   juce::ThreadPool loadingThreadPool;
+
+  // Background fetches into the disk cache only (no engine work): the
+  // previous / next neighbours of a stepped block. One thread, so prefetch
+  // never takes more than one download's worth of bandwidth from a real load.
+  juce::ThreadPool prefetchPool{juce::ThreadPoolOptions{}.withThreadName("T3K Prefetch").withNumberOfThreads(1)};
 
   int maxBlockSize = 0;
   bool eqParamsDirty = true;

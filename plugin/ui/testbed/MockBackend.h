@@ -38,6 +38,7 @@ public:
   juce::var loadLocalTonePath(const juce::File&, const std::string&) override;
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>&, const std::string&) override;
   bool swapTone(const std::string&, const juce::String&, const juce::var& = {}) override { return true; }
+  void prefetchModel(const juce::String&) override {}
   bool refreshToneMetadata(const juce::String&) override { return true; }
   bool switchModel(const std::string&, int, const juce::var&) override { return true; }
   bool retryModelLoad(const std::string&) override { return true; }

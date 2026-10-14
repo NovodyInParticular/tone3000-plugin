@@ -57,6 +57,8 @@ juce::var ProcessorBackend::loadLocalToneUrls(const juce::Array<juce::URL>& sour
                                               const std::string& targetInsertId) {
   return processor_.loadLocalToneUrls(sources, targetInsertId);
 }
+void ProcessorBackend::prefetchModel(const juce::String& modelUrl) { processor_.prefetchModel(modelUrl); }
+
 bool ProcessorBackend::swapTone(const std::string& blockId, const juce::String& toneJson,
                                 const juce::var& browse) {
   return processor_.swapTone(blockId, toneJson, browse);
