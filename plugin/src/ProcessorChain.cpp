@@ -828,7 +828,12 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
   // the wet path mutes in place (the dry input is never exposed, see
   // ChainBlock.h); on failure the block is dropped from processing, so it
   // glides to bypass, which is what plays afterwards.
-  requestSwapFadeAndWait(blockId, prepared.success);
+  // Same-type swaps on an audible block crossfade (no dip); everything else
+  // dips through silence as before.
+  auto crossfadeShell = crossfadeShellFor(blockId, type, prepared);
+  const bool crossfadeArmed = crossfadeShell != nullptr;
+  if (!crossfadeArmed)
+    requestSwapFadeAndWait(blockId, prepared.success);
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -847,8 +852,10 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
       return;
     }
 
-    applyPreparedModelToChainBlock(*block, type, prepared);
+    applyPreparedModelToChainBlock(*block, type, prepared, std::move(crossfadeShell));
   }
+  if (crossfadeArmed)
+    finishCrossfade(blockId);
   // `prepared` now holds the block's *previous* engines (if any); they are
   // destroyed here, after the lock; teardown is too heavy to hold it.
 
@@ -925,7 +932,12 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   // at 100% mix that's a burst of the un-cabbed/un-ampped signal, see
   // ChainBlock.h); on a failed prepare the block is dropped, so it glides
   // to bypass instead.
-  requestSwapFadeAndWait(blockId, prepared.success);
+  // Same-type swaps on an audible block crossfade (no dip); everything else
+  // dips through silence as before.
+  auto crossfadeShell = crossfadeShellFor(blockId, blockTypeForPrepare, prepared);
+  const bool crossfadeArmed = crossfadeShell != nullptr;
+  if (!crossfadeArmed)
+    requestSwapFadeAndWait(blockId, prepared.success);
 
   {
     juce::ScopedLock lock(chainMutex);
@@ -947,8 +959,10 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
       return;
     }
 
-    applyPreparedModelToChainBlock(*block, blockTypeForPrepare, prepared);
+    applyPreparedModelToChainBlock(*block, blockTypeForPrepare, prepared, std::move(crossfadeShell));
   }
+  if (crossfadeArmed)
+    finishCrossfade(blockId);
   // `prepared` now holds the block's *previous* engines (if any); they are
   // destroyed here, after the lock; teardown is too heavy to hold it.
 

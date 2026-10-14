@@ -239,3 +239,118 @@ TEST(SwapFadeTest, UndoRestoreHoldsChainMuteUntilModelsReload) {
 }
 
 }  // namespace
+
+// Crossfade swaps (RetiringModel, ChainBlock.h): a same-type model switch on
+// an audible block runs the outgoing and incoming engines side by side over
+// kCrossfadeSeconds instead of dipping the wet path through silence, so
+// stepping through captures while playing has no gap. Pinned through the
+// real processor: during a live cached switch, no 128-sample window of the
+// output falls below a fraction of the quieter of the two settled levels
+// (the old dip went to ~0 for ~50 ms, which this trips at once), and the
+// outgoing engine is released once the ramp lands.
+namespace {
+
+struct CrossfadeRig {
+  static constexpr int kStep = 128;  // fine enough to see a 25 ms dip
+  ChainTestProcessor proc;
+  std::vector<float> sine = makeSine(375 * kStep, 250.0, 0.2f);  // 250 whole cycles
+  juce::AudioBuffer<float> buffer{2, kStep};
+  juce::MidiBuffer midi;
+  int offset = 0;
+
+  explicit CrossfadeRig(juce::ValueTree block) {
+    proc.setPlayConfigDetails(2, 2, kFs, kStep);
+    proc.prepareToPlay(kFs, kStep);
+    juce::ValueTree state("ChainSnapshot");
+    juce::ValueTree lane("ChainBlocks");
+    lane.appendChild(block, nullptr);
+    state.appendChild(lane, nullptr);
+    proc.restoreFromTree(state);
+  }
+
+  float processOneRms() {
+    buffer.copyFrom(0, 0, sine.data() + offset, kStep);
+    buffer.copyFrom(1, 0, sine.data() + offset, kStep);
+    offset = (offset + kStep) % static_cast<int>(sine.size());
+    proc.processBlock(buffer, midi);
+    return buffer.getRMSLevel(0, 0, kStep);
+  }
+
+  // Settled RMS (the minimum window over half a second, after a second of
+  // settling): the floor the switch is held against.
+  float settledFloor() {
+    for (int i = 0; i < static_cast<int>(kFs) / kStep; ++i)
+      processOneRms();
+    float floor = 1e9f;
+    for (int i = 0; i < static_cast<int>(kFs) / kStep / 2; ++i)
+      floor = std::min(floor, processOneRms());
+    return floor;
+  }
+};
+
+void expectGaplessSwitch(juce::ValueTree block, int toModel, const char* name) {
+  CrossfadeRig rig(std::move(block));
+  ASSERT_TRUE(waitForChainLoaded(rig.proc));
+  const float before = rig.settledFloor();
+  ASSERT_GT(before, 1e-4f) << "block should be audibly processing";
+
+  ASSERT_TRUE(rig.proc.switchModel("blk", toModel, makeModelVar(toModel, name)));
+  float minDuring = 1e9f;
+  bool switched = false;
+  const juce::uint32 deadline = juce::Time::getMillisecondCounter() + 15000;
+  while (!switched && juce::Time::getMillisecondCounter() < deadline) {
+    for (int i = 0; i < 8; ++i)
+      minDuring = std::min(minDuring, rig.processOneRms());
+    const juce::var item = toneItemState(rig.proc, "blk");
+    switched = !static_cast<bool>(item["modelLoading"]) && static_cast<int>(item["activeModelId"]) == toModel;
+  }
+  ASSERT_TRUE(switched) << "cached model switch did not complete";
+  // The ramp and its tail.
+  for (int i = 0; i < static_cast<int>(kFs) / CrossfadeRig::kStep / 4; ++i)
+    minDuring = std::min(minDuring, rig.processOneRms());
+  const float after = rig.settledFloor();
+
+  // A linear crossfade between two uncorrelated captures can sag to -6 dB
+  // mid-ramp at worst; the old dip went to silence.
+  EXPECT_GE(minDuring, 0.4f * std::min(before, after))
+      << "swap left a gap: min " << minDuring << " vs settled " << before << " / " << after;
+
+  // The outgoing engine is detached and freed once the ramp has landed.
+  bool released = false;
+  for (int i = 0; i < 100 && !released; ++i) {
+    rig.processOneRms();
+    released = !rig.proc.hasRetiringModel("blk");
+    juce::Thread::sleep(5);
+  }
+  EXPECT_TRUE(released) << "outgoing model was never released";
+}
+
+}  // namespace
+
+TEST(SwapFadeTest, LiveNamModelSwitchCrossfadesWithoutAGap) {
+  juce::ValueTree block = makeNamBlockTree("blk", 1, 100, "a2-amp-test.nam");
+  cacheExtraModel(block, 101, "a2-am-test-2.nam");
+  expectGaplessSwitch(block, 101, "amp2");
+}
+
+TEST(SwapFadeTest, LiveIrModelSwitchCrossfadesWithoutAGap) {
+  juce::ValueTree block = makeIrBlockTree("blk", 1, 100, "cab-ir-test.wav");
+  cacheExtraModel(block, 101, "cab-ir-test-2.wav");
+  expectGaplessSwitch(block, 101, "cab2");
+}
+
+TEST(SwapFadeTest, SwitchWithAudioStoppedSplicesWithoutRetiring) {
+  // No callbacks: nothing is audible, so no crossfade is armed at all.
+  ChainTestProcessor proc;
+  juce::ValueTree block = makeIrBlockTree("blk", 1, 100, "cab-ir-test.wav");
+  cacheExtraModel(block, 101, "cab-ir-test-2.wav");
+  juce::ValueTree state("ChainSnapshot");
+  juce::ValueTree lane("ChainBlocks");
+  lane.appendChild(block, nullptr);
+  state.appendChild(lane, nullptr);
+  proc.restoreFromTree(state);
+  ASSERT_TRUE(waitForChainLoaded(proc));
+  ASSERT_TRUE(proc.switchModel("blk", 101, makeModelVar(101, "cab2")));
+  ASSERT_TRUE(waitForChainLoaded(proc));
+  EXPECT_FALSE(proc.hasRetiringModel("blk"));
+}

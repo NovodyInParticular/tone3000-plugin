@@ -581,6 +581,14 @@ void TONE3000Processor::prepareChain(std::vector<std::unique_ptr<ChainBlock>>& b
   const double chainRate = chainSampleRate();
 
   for (auto& block : blocks) {
+    // A crossfade's outgoing model was sized for the old configuration (its
+    // scratch, its IR island); the swap it belonged to is long audible by
+    // now, so drop it rather than re-prepare it. (Its loader sees it gone.)
+    if (block->retiring != nullptr) {
+      block->retiring.reset();
+      block->crossfadeDone.store(true);
+      block->crossfade.setCurrentAndTargetValue(1.0f);
+    }
     if (block->type == ChainBlockType::NAM) {
       if (block->namEngine != nullptr) {
         block->namEngine->prepare(domainBlockSize);
@@ -1160,6 +1168,48 @@ void TONE3000Processor::updateCachedParameters() {
       PitchShift::windowFromIndex(static_cast<int>(std::lround(paramRefs.pitchWindow->load())));
 }
 
+// The outgoing half of a swap crossfade: the retiring model's own wet path
+// on `buffer` (the block's pre-model signal), mirroring the live NAM / IR
+// stages in processChainOnBuffer with the post-model gain frozen at the
+// swap. RT-safe: engines and the island were prepared off-thread. Returns
+// false when the model can't run (the caller drops it).
+bool TONE3000Processor::processRetiringModel(RetiringModel& model, juce::AudioBuffer<float>& buffer,
+                                             bool noNamAfter, const NamEngine* incoming) {
+  const int numSamples = buffer.getNumSamples();
+  const int numChannels = buffer.getNumChannels();
+  try {
+    if (model.type == ChainBlockType::NAM && model.namEngine != nullptr) {
+      // Built for the chain as it was: if a voice-count (dual mono) or
+      // oversampling change has rebuilt the incoming engine since, the
+      // outgoing one no longer fits the buffer; drop it.
+      if (incoming == nullptr || model.namEngine->getVoiceCount() != incoming->getVoiceCount() ||
+          model.namEngine->getOversampleFactor() != incoming->getOversampleFactor())
+        return false;
+      if (cacheCalibrateInput && model.namEngine->hasInputLevel()) {
+        const double adjustmentDb = cacheInputCalibrationLevel - model.namEngine->getInputLevel();
+        buffer.applyGain(juce::Decibels::decibelsToGain(static_cast<float>(adjustmentDb)));
+      }
+      model.namEngine->process(buffer, rtPhasePool, rtDualMono);
+      return true;
+    }
+    if (model.type == ChainBlockType::IR && model.convolverMono != nullptr) {
+      const bool useStereoIr = model.irNumChannels > 1 && numChannels > 1 && noNamAfter && !rtDualMono &&
+                               model.convolverStereo != nullptr;
+      auto& convolver = useStereoIr ? *model.convolverStereo : *model.convolverMono;
+      model.irBaseRateIsland.processBaseRateIsland(
+          buffer.getArrayOfWritePointers(), numChannels, numSamples,
+          [&convolver, numChannels](float* const* baseChannels, int baseFrames) {
+            juce::dsp::AudioBlock<float> irBlock(baseChannels, static_cast<size_t>(numChannels),
+                                                 static_cast<size_t>(baseFrames));
+            processConvolverInChunks(convolver, irBlock);
+          });
+      return true;
+    }
+  } catch (const std::exception&) {
+  }
+  return false;
+}
+
 // ##########################
 // RT PROCESS A SINGLE CHAIN
 // ##########################
@@ -1268,6 +1318,18 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
           blockInputPeak > 0.0f ? juce::Decibels::gainToDecibels(blockInputPeak) : -60.0f;
       block->inputMeterDb.store(std::max(-60.0f, blockInputDb));
     }
+
+    // Swap crossfade: the outgoing model gets its own copy of the pre-model
+    // signal (its scratch was sized off-thread to the chain domain block).
+    RetiringModel* const retiring = block->retiring.get();
+    const bool crossfading = retiring != nullptr && !block->crossfadeDone.load() &&
+                             retiring->scratch.getNumChannels() >= numChannels &&
+                             retiring->scratch.getNumSamples() >= numSamples;
+    if (crossfading)
+      for (int ch = 0; ch < numChannels; ++ch)
+        retiring->scratch.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+    else if (retiring != nullptr)
+      block->crossfadeDone.store(true);  // can't run it here: let the loader drop it
 
     if (block->type == ChainBlockType::NAM) {
       // NAM Processing (the engine runs at the chain rate, no per-block resampling)
@@ -1418,6 +1480,25 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       } catch (const std::exception& e) {
         DBG("Error in IR processing for block " << block->id << ": " << e.what());
       }
+    }
+
+    if (crossfading) {
+      // A view onto the scratch at this callback's length (no allocation).
+      juce::AudioBuffer<float> outgoing(retiring->scratch.getArrayOfWritePointers(), numChannels, numSamples);
+      if (processRetiringModel(*retiring, outgoing, idx > lastNamIndex, block->namEngine.get())) {
+        for (int i = 0; i < numSamples; ++i) {
+          const float in = block->crossfade.getNextValue();
+          const float out = (1.0f - in) * retiring->outputGain;
+          for (int ch = 0; ch < numChannels; ++ch) {
+            auto* d = buffer.getWritePointer(ch);
+            d[i] = d[i] * in + outgoing.getReadPointer(ch)[i] * out;
+          }
+        }
+      } else {
+        block->crossfade.setCurrentAndTargetValue(1.0f);  // the outgoing model failed: drop it
+      }
+      if (!block->crossfade.isSmoothing())
+        block->crossfadeDone.store(true);  // the loader detaches and frees it
     }
 
     // EQ in the POST position (default): shapes the wet signal after the

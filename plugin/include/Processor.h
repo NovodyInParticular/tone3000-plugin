@@ -618,7 +618,31 @@ private:
     // can override this; see irIsLongFor in ProcessorModelLoader.cpp.
     bool irIsLongByLength = false;
     float irNormalizationGainLinear = 1.0f;
+
+    // An outgoing crossfade model the apply had to drop (a dip swap landing
+    // mid-crossfade); destroyed with `prepared`, after the lock.
+    std::unique_ptr<RetiringModel> retiredOut;
   };
+
+  // Swap crossfade (RetiringModel, ChainBlock.h). Before the apply: the
+  // shell for the outgoing model when this swap can crossfade (audio
+  // running, the block audible, same engine type both sides), sized here
+  // off the lock; null means take the dip-through-silence swap instead.
+  std::unique_ptr<RetiringModel> crossfadeShellFor(const std::string& blockId, ChainBlockType newType,
+                                                   const PreparedBlockModel& prepared);
+  // After the apply: wait (bounded) for the audio thread to land the ramp,
+  // then detach the outgoing model and destroy it off the lock.
+  void finishCrossfade(const std::string& blockId);
+
+public:
+  // Tests: whether the block still holds a crossfade's outgoing model.
+  bool hasRetiringModel(const std::string& blockId) {
+    juce::ScopedLock lock(chainMutex);
+    const ChainBlock* block = findBlockById(blockId);
+    return block != nullptr && block->retiring != nullptr;
+  }
+
+private:
 
   /** CPU/file heavy; call without holding `chainMutex`. NAM engines come out
       at the given slimmable size (the callers read it off the block, so the
@@ -634,7 +658,8 @@ private:
       (NAM graphs, convolution state) are far too heavy to run while the audio
       thread may be blocked on chainMutex. */
   void applyPreparedModelToChainBlock(ChainBlock& block, ChainBlockType newType,
-                                      PreparedBlockModel& prepared);
+                                      PreparedBlockModel& prepared,
+                                      std::unique_ptr<RetiringModel> crossfadeShell = nullptr);
 
   /** Ask the audio thread to glide `blockId`'s wet path down to silence,
       then wait (bounded) for the fade, so the caller's change (engine swap,
@@ -711,6 +736,11 @@ private:
   // run the whole lane (endIdx -1 = blocks.size()). Whole-chain context
   // (lastNamIndex) is always computed over the full lane regardless of the
   // range; the range is a routing split, not a different chain.
+  // The outgoing model of a swap crossfade, on its own copy of the block's
+  // pre-model signal (RetiringModel in ChainBlock.h). Audio thread.
+  bool processRetiringModel(RetiringModel& model, juce::AudioBuffer<float>& buffer, bool noNamAfter,
+                            const NamEngine* incoming);
+
   void processChainOnBuffer(std::vector<std::unique_ptr<ChainBlock>>& blocks,
                             juce::AudioBuffer<float>& buffer,
                             juce::AudioBuffer<float>& dryScratch, int beginIdx = 0,

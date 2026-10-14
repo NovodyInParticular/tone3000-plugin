@@ -1287,8 +1287,60 @@ void TONE3000Processor::releaseChainEditFadeWhenLoadsSettle() {
   loadingThreadPool.addJob(new ReleaseJob(*this, generation, loadsQueued), true);
 }
 
+std::unique_ptr<RetiringModel> TONE3000Processor::crossfadeShellFor(const std::string& blockId,
+                                                                    ChainBlockType newType,
+                                                                    const PreparedBlockModel& prepared) {
+  if (!prepared.success || !isAudioActive())
+    return nullptr;
+  {
+    juce::ScopedLock lock(chainMutex);
+    const ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr || !block->loaded || !block->enabled || block->type != newType ||
+        block->retiring != nullptr || block->swapFadePending.load())
+      return nullptr;
+    // Fully in the chain (not mid power glide): there is an audible old
+    // engine worth carrying across.
+    if (block->wetFadeGain.isSmoothing() || block->wetFadeGain.getCurrentValue() < 0.999f)
+      return nullptr;
+    const bool enginesBothSides =
+        newType == ChainBlockType::NAM
+            ? block->namEngine != nullptr && prepared.namEngine != nullptr
+            : block->convolverMono != nullptr && prepared.convolverMono != nullptr;
+    if (!enginesBothSides)
+      return nullptr;
+  }
+  auto shell = std::make_unique<RetiringModel>();
+  shell->scratch.setSize(2, juce::jmax(1, chainDomainBlockSize()));
+  return shell;
+}
+
+void TONE3000Processor::finishCrossfade(const std::string& blockId) {
+  // The ramp is kCrossfadeSeconds of audio; the deadline only covers audio
+  // stopping mid-ramp (then nothing is audible and detaching is silent).
+  const juce::uint32 deadline = juce::Time::getMillisecondCounter() + 500;
+  std::unique_ptr<RetiringModel> outgoing;
+  while (outgoing == nullptr) {
+    {
+      juce::ScopedLock lock(chainMutex);
+      ChainBlock* block = findBlockById(blockId);
+      if (block == nullptr || block->retiring == nullptr)
+        return;  // removed, or a later apply already dropped it
+      if (block->crossfadeDone.load() || juce::Time::getMillisecondCounter() >= deadline) {
+        outgoing = std::move(block->retiring);
+        block->crossfadeDone.store(true);
+        block->crossfade.setCurrentAndTargetValue(1.0f);
+      }
+    }
+    if (outgoing == nullptr)
+      juce::Thread::sleep(2);
+  }
+  // `outgoing` (NAM graph / convolution state) is destroyed here, off the
+  // lock: teardown is too heavy to hold it while the audio thread may wait.
+}
+
 void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainBlockType newType,
-                                                       PreparedBlockModel& prepared) {
+                                                       PreparedBlockModel& prepared,
+                                                       std::unique_ptr<RetiringModel> crossfadeShell) {
   // Loaded state is part of what getChainState reports, so any outcome here
   // must wake up the UI's revision-gated poll.
   bumpChainRevision();
@@ -1298,6 +1350,14 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   // to hear. Remember the fade's shape first; it decides how the new
   // engine fades in below.
   const bool muteWetSwap = block.swapFadePending.load() && block.swapMuteWet.load();
+  // A dip swap landing mid-crossfade: the outgoing model of the previous
+  // swap goes too (the dip already silenced the whole wet term). The caller
+  // destroys it with `prepared`, after the lock.
+  if (block.retiring != nullptr && crossfadeShell == nullptr) {
+    prepared.retiredOut = std::move(block.retiring);
+    block.crossfadeDone.store(true);
+    block.crossfade.setCurrentAndTargetValue(1.0f);
+  }
   block.modelLoading = false;
   block.swapFadePending.store(false);
   block.swapFadeDone.store(false);
@@ -1367,6 +1427,38 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
       prepared.convolverStereo->prepare(spec);
   }
 
+  // Crossfade swap (RetiringModel): the block's current engines move into
+  // the outgoing model, which keeps sounding next to the incoming one until
+  // the ramp lands. Re-checked here under the lock: the block may have been
+  // powered off or swapped again since crossfadeShellFor looked.
+  const float cabPad = juce::Decibels::decibelsToGain(-18.0f);  // see the mix stage's irOffsetDb
+  bool crossfading = false;
+  if (crossfadeShell != nullptr && block.loaded && block.enabled && block.type == newType &&
+      block.retiring == nullptr &&
+      (newType == ChainBlockType::NAM
+           ? block.namEngine != nullptr && prepared.namEngine != nullptr
+           : block.convolverMono != nullptr && prepared.convolverMono != nullptr)) {
+    auto& outgoing = *crossfadeShell;
+    outgoing.type = block.type;
+    outgoing.namEngine = std::move(block.namEngine);
+    outgoing.convolverMono = std::move(block.convolverMono);
+    outgoing.convolverStereo = std::move(block.convolverStereo);
+    outgoing.irNumChannels = block.irNumChannels;
+    if (newType == ChainBlockType::IR) {
+      std::swap(outgoing.irBaseRateIsland, block.irBaseRateIsland);  // the block's is re-prepared below
+      outgoing.outputGain =
+          block.irNormalizationSmoother.getCurrentValue() * (block.irIsLong ? 1.0f : cabPad);
+    } else {
+      outgoing.outputGain = block.namNormalizationSmoother.getCurrentValue();
+    }
+    block.retiring = std::move(crossfadeShell);
+    block.crossfade.reset(chainSampleRate(), kCrossfadeSeconds);
+    block.crossfade.setCurrentAndTargetValue(0.0f);
+    block.crossfade.setTargetValue(1.0f);
+    block.crossfadeDone.store(false);
+    crossfading = true;
+  }
+
   // Engines are *swapped*, not reset: the block's previous engines end up in
   // `prepared`, and the caller destroys them after releasing chainMutex;
   // NAM graph / convolution teardown must never run while the audio thread
@@ -1385,7 +1477,9 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     block.namEngine->setSlimmableSize(block.namSlimSize);
 
     block.namNormalizationSmoother.reset(chainSampleRate(), 0.05f);
-    block.namNormalizationSmoother.setCurrentAndTargetValue(1.0f);
+    // Crossfading: start the incoming engine at the gain the outgoing one
+    // ran at (it glides to its own as the ramp runs), not at unity.
+    block.namNormalizationSmoother.setCurrentAndTargetValue(crossfading ? block.retiring->outputGain : 1.0f);
     block.loaded = true;
     block.loadFailed = false;
 
@@ -1402,6 +1496,10 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
     // tone this engine belongs to; a swap sets it before queueing the load.
     const juce::String gear = block.toneVar["gear"].toString();
     block.irIsLong = irIsLongFor(gear, prepared.irIsLongByLength);
+    // The mix stage pads the whole blended wet term with the incoming
+    // block's pad; keep the outgoing IR at its own.
+    if (crossfading)
+      block.retiring->outputGain /= block.irIsLong ? 1.0f : cabPad;
     if (block.irIsLong != prepared.irIsLongByLength)
       juce::Logger::writeToLog("[ModelLoader] IR classified " +
                                juce::String(block.irIsLong ? "long" : "short") + " by gear '" +
@@ -1462,7 +1560,11 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   // bypass-shaped entry (fresh block, or the fade never engaged) crossfades
   // in from dry via wetFadeGain, exactly as before.
   block.swapWetMuteGain.reset(chainSampleRate(), kWetFadeSeconds);
-  if (muteWetSwap) {
+  if (crossfading) {
+    // No dip at all: the wet path stays at full level and the crossfade
+    // ramp carries the change (wetFadeGain is untouched, as in a mute swap).
+    block.swapWetMuteGain.setCurrentAndTargetValue(1.0f);
+  } else if (muteWetSwap) {
     // wetFadeGain stayed at 1 through the whole swap (the audio thread owns
     // it and it wasn't part of this fade); leave it alone so a concurrent
     // power-off glide keeps its course.

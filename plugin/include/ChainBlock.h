@@ -44,6 +44,12 @@ inline int laneIndex(ChainSide side) { return side == ChainSide::Right ? 1 : 0; 
 // chain-edit fade (reorder/cross-lane moves mute-splice the chain output).
 constexpr double kWetFadeSeconds = 0.025;
 
+// Engine-swap crossfade time (see ChainBlock::retiring): a same-type swap
+// (amp to amp, cab to cab) on an audible block runs the outgoing and the
+// incoming engine side by side over this ramp instead of dipping the wet
+// path through silence, so stepping through captures mid-phrase has no gap.
+constexpr double kCrossfadeSeconds = 0.04;
+
 // Minimum tiles per lane. A lane always presents at least this many blocks
 // (tones + insert placeholders), and always at least one insert placeholder,
 // so an empty lane shows kMinLaneSlots empty slots, and once the user has
@@ -90,6 +96,30 @@ inline void processConvolverInChunks(juce::dsp::Convolution& convolver,
     convolver.process(juce::dsp::ProcessContextReplacing<float>(chunk));
   }
 }
+
+// The outgoing model of a crossfading swap: everything its wet path needs
+// to keep sounding for kCrossfadeSeconds next to the incoming engine. Built
+// and installed under chainMutex by a loader thread (never the audio
+// thread; the scratch is sized there), processed by the audio thread, and
+// detached and destroyed by the loader once the ramp lands.
+struct RetiringModel {
+  ChainBlockType type = ChainBlockType::NAM;
+  std::unique_ptr<NamEngine> namEngine;
+  std::unique_ptr<juce::dsp::Convolution> convolverMono;
+  std::unique_ptr<juce::dsp::Convolution> convolverStereo;
+  int irNumChannels{1};
+  // The IR's base-rate island, carried over with its filter state so the
+  // outgoing convolver keeps running exactly as it did.
+  ChainOversampler irBaseRateIsland;
+  // Post-model gain, frozen at the swap: the NAM normalization / hand-off
+  // gain it was running at, or the IR normalization times its cab pad
+  // relative to the incoming one's (the mix stage applies the incoming
+  // block's pad to the whole blended wet term).
+  float outputGain{1.0f};
+  // The block's pre-model signal, copied for the outgoing engine to process
+  // (2 channels × the chain domain's block size).
+  juce::AudioBuffer<float> scratch;
+};
 
 // Chain block data structure
 struct ChainBlock {
@@ -199,6 +229,15 @@ struct ChainBlock {
   // in the same breath). The message thread drains it in getChainState and
   // writes the log line there; string building/logging is not RT-safe.
   std::atomic<bool> rtProcessingFailed{false};
+
+  // Swap crossfade (see RetiringModel): while `retiring` is set and
+  // `crossfadeDone` is false, the audio thread runs both models and blends
+  // the incoming one in along `crossfade` (0 → 1, linear: correlated
+  // captures, the usual case, keep their level instead of bumping +3 dB).
+  // The pointer only changes under chainMutex.
+  std::unique_ptr<RetiringModel> retiring;
+  juce::LinearSmoothedValue<float> crossfade{1.0f};
+  std::atomic<bool> crossfadeDone{true};
 
   // NAM-specific processing (runs at the chain rate; see ChainDomain.h)
   std::unique_ptr<NamEngine> namEngine;
