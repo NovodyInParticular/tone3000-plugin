@@ -19,6 +19,7 @@ target_sources(DspTests PRIVATE
     src/auto_offset_tests.cpp
     src/browse_context_tests.cpp
     src/model_disk_cache_tests.cpp
+    src/tone_step_tests.cpp
     src/branch_tests.cpp
     src/clipboard_tests.cpp
     src/dsp_tests.cpp

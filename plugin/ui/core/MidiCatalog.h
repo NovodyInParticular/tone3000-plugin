@@ -37,8 +37,9 @@ inline constexpr int kBlockPowerTargets = 12;
 const std::vector<MappableTarget>& mappableTargets();
 const MappableTarget* targetById(const juce::String& id);
 
-// "block3Power" → {2, left}, "rightBlock3Power" → {2, right}; nullopt for
-// anything else (mirrors the native parse).
+// "block3Power" → {2, left}, "rightBlock3Power" → {2, right}, and the same
+// for the tone steps ("block3Next", "rightBlock1Prev"); nullopt for anything
+// else (mirrors the native parse).
 struct BlockPowerTarget {
   int index;
   bool right;

@@ -80,6 +80,12 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
       session_(backend_, prefs_, http_, Tone3000Session::Config::fromBuild()),
       services_(backend_, session_, *this, prefs_),
       root_(services_) {
+  // MIDI tone steps go through the stepper while the window is open (memo,
+  // prefetch, next-page fetches); with it closed the processor steps alone.
+  processor_.blockStepHandler = [this](const std::string& blockId, int delta) {
+    services_.stepper.step(blockId, delta);
+    return true;
+  };
   // Dark-theme every JUCE-drawn surface outside the root (standalone audio
   // settings dialog etc.). SharedResourcePointer keeps one instance across
   // plugin instances in the same process.
@@ -114,7 +120,10 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
   trace("Constructed: " + juce::String(getWidth()) + "x" + juce::String(getHeight()));
 }
 
-NativeEditor::~NativeEditor() { stopTimer(); }
+NativeEditor::~NativeEditor() {
+  processor_.blockStepHandler = nullptr;
+  stopTimer();
+}
 
 double NativeEditor::maxStartScale() const {
   // In a DAW the host owns the plugin window, so the persisted scale is

@@ -3,6 +3,9 @@
 #include "NativeEditor.h"
 #endif
 #include "StandaloneStateAutosave.h"
+#if __has_include("T3kConfig.h")
+#include "T3kConfig.h"
+#endif
 #include <cmath>
 #include <mutex>
 #include <optional>
@@ -96,6 +99,11 @@ TONE3000Processor::TONE3000Processor()
     toggleBlockPower(index, right);
   };
   midiMapper.onStereoToggle = [this] { setStereoMode(!isStereoMode()); };
+  midiMapper.onBlockStep = [this](int index, bool right, int delta) { stepBlock(index, right, delta); };
+#if __has_include("T3kConfig.h")
+  // The build's TONE3000 API, for MIDI tone steps while no editor is open.
+  setToneApiConfig(t3k::ui::config::kApiOrigin, t3k::ui::config::kArchitecture);
+#endif
 
   // Every lane starts at its minimum slot layout (kMinLaneSlots pass-through
   // insert placeholders). The right lane stays invisible until stereo mode is
@@ -508,6 +516,7 @@ int TONE3000Processor::namEngineVoiceCount(const std::string& blockId) const {
 }
 
 TONE3000Processor::~TONE3000Processor() {
+  *lifetimeToken = false;
   // Prefetches poll their job's exit flag between reads, so this returns
   // within one network read instead of a whole download.
   prefetchPool.removeAllJobs(true, 2000);

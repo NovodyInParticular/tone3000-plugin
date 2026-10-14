@@ -20,6 +20,23 @@ MidiMapper::BlockPowerTarget MidiMapper::blockPowerTargetFor(const juce::String&
   return {position - 1, right};
 }
 
+MidiMapper::BlockStepTarget MidiMapper::blockStepTargetFor(const juce::String& targetId) {
+  const bool right = targetId.startsWith("rightBlock");
+  if (!right && !targetId.startsWith("block"))
+    return {};
+  const int delta = targetId.endsWith("Next") ? 1 : targetId.endsWith("Prev") ? -1 : 0;
+  if (delta == 0)
+    return {};
+  const int prefixLength = right ? 10 : 5;  // "rightBlock" / "block"
+  const auto middle = targetId.substring(prefixLength, targetId.length() - 4);
+  if (middle.isEmpty() || !middle.containsOnly("0123456789"))
+    return {};
+  const int position = middle.getIntValue();  // 1-based in the id
+  if (position < 1 || position > kMaxStepBlocks)
+    return {};
+  return {position - 1, right, delta};
+}
+
 //==============================================================================
 // Audio thread
 
@@ -111,6 +128,15 @@ void MidiMapper::applyEvent(Mapping& mapping, const juce::MidiMessage& msg) {
         pendingPresetSteps.fetch_add(mapping.presetDelta);
         triggerAsyncUpdate();
         return;
+      case Kind::blockStep: {
+        // A tone swap is message-thread work (and maybe a network fetch);
+        // the per-position signed sum nets rapid stomps like preset steps.
+        const auto lane = static_cast<size_t>(mapping.rightBlock ? 1 : 0);
+        pendingBlockSteps[lane][static_cast<size_t>(mapping.blockIndex)].fetch_add(mapping.presetDelta);
+        pendingBlockStepMask[lane].fetch_or(juce::uint64(1) << mapping.blockIndex);
+        triggerAsyncUpdate();
+        return;
+      }
       case Kind::parameter: {
         auto& param = *mapping.param;
         param.setValueNotifyingHost(param.getValue() < 0.5f ? 1.0f : 0.0f);
@@ -206,11 +232,15 @@ bool MidiMapper::setCcMapping(const juce::String& targetId, int ccNumber) {
 
 MidiMapper::Mapping MidiMapper::makeMapping(const juce::String& targetId, Source source,
                                             int number) const {
-  const auto block = blockPowerTargetFor(targetId);
+  const auto step = blockStepTargetFor(targetId);
+  auto block = blockPowerTargetFor(targetId);
+  if (step.index >= 0)
+    block = {step.index, step.right};
   const int presetDelta = targetId == kPresetNextTarget   ? 1
                           : targetId == kPresetPrevTarget ? -1
-                                                          : 0;
-  const Kind kind = presetDelta != 0          ? Kind::presetStep
+                                                          : step.delta;
+  const Kind kind = step.index >= 0             ? Kind::blockStep
+                    : presetDelta != 0          ? Kind::presetStep
                     : targetId == kStereoTarget ? Kind::stereoMode
                     : block.index >= 0          ? Kind::blockPower
                                                 : Kind::parameter;
@@ -261,6 +291,17 @@ void MidiMapper::handleAsyncUpdate() {
 
   if (const int steps = pendingPresetSteps.exchange(0); steps != 0 && onPresetStep)
     onPresetStep(steps);
+
+  for (size_t lane = 0; lane < 2; ++lane) {
+    auto mask = pendingBlockStepMask[lane].exchange(0);
+    for (size_t index = 0; mask != 0; ++index, mask >>= 1) {
+      if ((mask & 1) == 0)
+        continue;
+      const int delta = pendingBlockSteps[lane][index].exchange(0);
+      if (delta != 0 && onBlockStep)
+        onBlockStep(static_cast<int>(index), lane == 1, delta);
+    }
+  }
 
   // 3. Tell the UI, but only when the map/learn state actually moved;
   //    performance events alone shouldn't cause settings re-pulls.

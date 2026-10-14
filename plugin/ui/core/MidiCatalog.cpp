@@ -58,6 +58,13 @@ const std::vector<MappableTarget>& mappableTargets() {
     for (int i = 1; i <= kBlockPowerTargets; ++i)
       t.push_back({"rightBlock" + juce::String(i) + "Power", "Block " + juce::String(i) + " Power", "Chain R",
                    K::toggle});
+    // Previous / next through the search a block's tone came from.
+    for (const char* lane : {"block", "rightBlock"})
+      for (int i = 1; i <= kBlockPowerTargets; ++i) {
+        const juce::String group = juce::String(lane) == "block" ? "Chain" : "Chain R";
+        t.push_back({lane + juce::String(i) + "Prev", "Block " + juce::String(i) + " Previous Tone", group, K::trigger});
+        t.push_back({lane + juce::String(i) + "Next", "Block " + juce::String(i) + " Next Tone", group, K::trigger});
+      }
     return t;
   }();
   return table;
@@ -70,11 +77,12 @@ const MappableTarget* targetById(const juce::String& id) {
 }
 
 std::optional<BlockPowerTarget> blockPowerTarget(const juce::String& targetId) {
-  // ^(right)?[bB]lock(\d+)Power$
+  // ^(right)?[bB]lock(\d+)(Power|Next|Prev)$: every positional block target
   const bool right = targetId.startsWith("right");
   auto rest = right ? targetId.substring(5) : targetId;
-  if (!(rest.startsWith("block") || rest.startsWith("Block")) || !rest.endsWith("Power")) return std::nullopt;
-  const auto digits = rest.substring(5, rest.length() - 5);
+  const int suffix = rest.endsWith("Power") ? 5 : rest.endsWith("Next") || rest.endsWith("Prev") ? 4 : 0;
+  if (!(rest.startsWith("block") || rest.startsWith("Block")) || suffix == 0) return std::nullopt;
+  const auto digits = rest.substring(5, rest.length() - suffix);
   if (digits.isEmpty() || !digits.containsOnly("0123456789")) return std::nullopt;
   return BlockPowerTarget{digits.getIntValue() - 1, right};
 }

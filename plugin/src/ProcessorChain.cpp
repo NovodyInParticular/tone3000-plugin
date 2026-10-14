@@ -1715,3 +1715,139 @@ juce::String TONE3000Processor::getAccessToken() const {
   juce::ScopedLock lock(accessTokenMutex);
   return accessToken;
 }
+
+// #####################################
+// TONE STEPS (MIDI next / previous)
+// #####################################
+
+void TONE3000Processor::setToneApiConfig(const juce::String& origin, int architecture) {
+  toneApiOrigin = origin.trimCharactersAtEnd("/");
+  toneApiArchitecture = architecture;
+}
+
+int TONE3000Processor::browseStepIndex(const juce::var& context, int delta) {
+  const auto* tones = context["tones"].getArray();
+  if (tones == nullptr || tones->isEmpty() || delta == 0)
+    return -1;
+  int index = static_cast<int>(context.getProperty("index", 0));
+  const int dir = delta > 0 ? 1 : -1;
+  for (int moved = 0; moved < std::abs(delta);) {
+    index += dir;
+    if (index < 0 || index >= tones->size())
+      return -1;
+    const auto& tone = (*tones)[index];
+    const bool loadable = !tone["format"].toString().equalsIgnoreCase("nam") ||
+                          static_cast<bool>(tone.getProperty("a2", true));
+    if (loadable)
+      ++moved;
+  }
+  return index;
+}
+
+juce::String TONE3000Processor::toneJsonWithFirstModel(const juce::var& tone, const juce::var& models) {
+  if (tone.getDynamicObject() == nullptr || static_cast<int>(tone["id"]) <= 0)
+    return {};
+  const auto* rows = models["data"].getArray();
+  if (rows == nullptr || rows->isEmpty() || (*rows)[0]["model_url"].toString().isEmpty())
+    return {};
+  auto merged = tone.clone();
+  merged.getDynamicObject()->setProperty("models", juce::Array<juce::var>{(*rows)[0]});
+  return juce::JSON::toString(merged, true);
+}
+
+bool TONE3000Processor::stepBlock(int position, bool rightLane, int delta) {
+  if (delta == 0 || (rightLane && !isStereoMode()))
+    return false;
+  std::string blockId;
+  {
+    juce::ScopedLock lock(chainMutex);
+    int seen = 0;
+    for (const auto& block : lane(rightLane ? ChainSide::Right : ChainSide::Left)) {
+      if (block->type == ChainBlockType::INSERT)
+        continue;
+      if (seen++ == position) {
+        if (block->browse.isObject())
+          blockId = block->id;
+        break;
+      }
+    }
+  }
+  if (blockId.empty())
+    return false;  // chain shorter than the mapped slot, or no search behind it
+  if (blockStepHandler && blockStepHandler(blockId, delta))
+    return true;
+  stepBlockHeadless(blockId, delta);
+  return true;
+}
+
+// Window closed: step within the stored page (fetching another page needs
+// the browser's query builder, which lives in the UI), resolving the tone
+// over the API with the last token the UI pushed. Network on the loader
+// pool; the swap lands on the message thread. A step past the page's end,
+// or with no token, just logs: the on-screen and editor-open paths cover it.
+void TONE3000Processor::stepBlockHeadless(const std::string& blockId, int delta) {
+  juce::var context;
+  {
+    juce::ScopedLock lock(chainMutex);
+    if (const ChainBlock* block = findBlockById(blockId))
+      context = block->browse;
+  }
+  const int index = browseStepIndex(context, delta);
+  if (index < 0 || toneApiOrigin.isEmpty()) {
+    juce::Logger::writeToLog("[ToneStep] No step for block " + juce::String(blockId) +
+                             (index < 0 ? " (end of the stored page)" : " (no API configured)"));
+    return;
+  }
+  const int toneId = static_cast<int>(context["tones"][index]["id"]);
+  const bool nam = context["tones"][index]["format"].toString().equalsIgnoreCase("nam");
+  auto next = context.clone();
+  next.getDynamicObject()->setProperty("index", index);
+  const int generation = ++headlessStepGeneration[blockId];
+
+  struct ResolveJob : public juce::ThreadPoolJob {
+    TONE3000Processor& processor;
+    std::string blockId;
+    juce::String toneUrl, modelsUrl;
+    juce::var context;
+    int generation;
+    ResolveJob(TONE3000Processor& p, std::string id, juce::String t, juce::String m, juce::var c, int g)
+        : ThreadPoolJob("Tone Step"), processor(p), blockId(std::move(id)), toneUrl(std::move(t)),
+          modelsUrl(std::move(m)), context(std::move(c)), generation(g) {}
+
+    juce::var getJson(const juce::String& url) {
+      const auto token = processor.getAccessToken();
+      auto options = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
+                         .withConnectionTimeoutMs(10000)
+                         .withExtraHeaders(token.isNotEmpty() ? "Authorization: Bearer " + token : juce::String());
+      std::unique_ptr<juce::InputStream> stream(juce::URL(url).createInputStream(options));
+      if (stream == nullptr || shouldExit())
+        return {};
+      // API payloads are small; a cap keeps a hostile reply from ballooning.
+      return juce::JSON::parse(stream->readString().substring(0, 4 * 1024 * 1024));
+    }
+
+    JobStatus runJob() override {
+      const auto json = toneJsonWithFirstModel(getJson(toneUrl), getJson(modelsUrl));
+      if (json.isEmpty()) {
+        juce::Logger::writeToLog("[ToneStep] Couldn't resolve the next tone (offline or signed out?)");
+        return jobHasFinished;
+      }
+      // The processor is destroyed on the message thread too, so checking
+      // its lifetime flag there is race-free.
+      juce::MessageManager::callAsync([self = &processor, alive = processor.lifetimeToken, id = blockId, json,
+                                       ctx = context, gen = generation] {
+        if (!*alive || self->headlessStepGeneration[id] != gen)
+          return;  // gone, or a newer step won
+        self->swapTone(id, json, ctx);
+      });
+      return jobHasFinished;
+    }
+  };
+
+  juce::String modelsUrl = toneApiOrigin + "/api/v1/models?tone_id=" + juce::String(toneId) + "&page=1&page_size=1";
+  if (nam && toneApiArchitecture >= 0)
+    modelsUrl << "&architecture=" << toneApiArchitecture;
+  loadingThreadPool.addJob(new ResolveJob(*this, blockId, toneApiOrigin + "/api/v1/tones/" + juce::String(toneId),
+                                          modelsUrl, next, generation),
+                           true);
+}

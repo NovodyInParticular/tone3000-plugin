@@ -184,6 +184,27 @@ public:
   // next neighbours of a stepped block), so stepping to it loads without the
   // network. No-op when cached, already queued, local, or the queue is full.
   void prefetchModel(const juce::String& modelUrl);
+
+  // Previous / next for the Nth tone block of a lane (the MIDI tone-step
+  // targets). An open editor's stepper takes it when registered (it has the
+  // session, the memo and the prefetch); otherwise the processor steps
+  // within the stored page itself, with the last token the UI pushed.
+  // Message thread. Returns false when there is no such block or nothing to
+  // step to.
+  bool stepBlock(int position, bool rightLane, int delta);
+  // Set by the editor while it is open; returns true when it took the step.
+  std::function<bool(const std::string& blockId, int delta)> blockStepHandler;
+  // Where the window-closed step resolves tones (the build's TONE3000 API;
+  // tests point it elsewhere).
+  void setToneApiConfig(const juce::String& origin, int architecture);
+  // Pure helpers of the window-closed step (tested directly).
+  // The context's cursor moved by `delta`, skipping NAM tones with no A2
+  // model; -1 when that leaves the stored page.
+  static int browseStepIndex(const juce::var& context, int delta);
+  // A /tones/{id} payload with the first model of a /models listing set as
+  // its models array: the tone JSON swapTone takes. "" when either is
+  // unusable.
+  static juce::String toneJsonWithFirstModel(const juce::var& tone, const juce::var& models);
   static constexpr size_t kMaxPrefetchQueue = 6;
   ModelDiskCache& diskCache() { return *modelDiskCache; }
   // Tests point the cache at a scratch folder (before any load).
@@ -1123,6 +1144,14 @@ private:
   // in reverse order, so the pools (and their jobs) go first.
   std::unique_ptr<ModelDiskCache> modelDiskCache =
       std::make_unique<ModelDiskCache>(ModelDiskCache::defaultRoot());
+  // Window-closed tone steps (stepBlock): API config, and the newest step
+  // per block so an older resolve landing late is dropped (message thread).
+  juce::String toneApiOrigin;
+  int toneApiArchitecture = 2;
+  std::map<std::string, int> headlessStepGeneration;
+  // Cleared by the destructor; message-thread callbacks check it first.
+  std::shared_ptr<bool> lifetimeToken = std::make_shared<bool>(true);
+  void stepBlockHeadless(const std::string& blockId, int delta);
   std::mutex prefetchMutex;
   std::set<juce::String> prefetchInFlight;  // cache keys queued or running
 

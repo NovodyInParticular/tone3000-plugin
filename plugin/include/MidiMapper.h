@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <array>
 #include <atomic>
 #include <functional>
 #include <vector>
@@ -28,6 +29,9 @@
  *   - Preset steps ("presetPrevious" / "presetNext"): fire-per-press
  *     triggers that walk the preset list, for footswitches programmed with
  *     CC / note buttons instead of program changes.
+ *   - Tone steps ("block2Next" / "block2Prev", "rightBlock2Next" …):
+ *     positional like block powers; step that block to the next / previous
+ *     result of the search its tone came from (BrowseContext.h).
  *
  * Model: one source per target (mapping identity == targetId); one physical
  * control may drive any number of targets. A global channel filter (omni by
@@ -103,13 +107,24 @@ public:
   std::function<void(int blockIndex, bool rightLane)> onBlockPowerToggle;
   /** A mapped stereo-mode control fired (net of parity coalescing). */
   std::function<void()> onStereoToggle;
+  /** Mapped tone-step controls fired for the given chain position; delta
+      is the net step count (signed sum, coalesced like preset steps). */
+  std::function<void(int blockIndex, bool rightLane, int delta)> onBlockStep;
+  /** Parsed tone-step target: index -1 for anything else. */
+  struct BlockStepTarget {
+    int index = -1;
+    bool right = false;
+    int delta = 0;  // +1 Next, -1 Prev
+  };
+  /** "block3Next" → {2, left, +1}, "rightBlock1Prev" → {0, right, -1}. */
+  static BlockStepTarget blockStepTargetFor(const juce::String& targetId);
   /** Mapped preset prev/next controls fired; delta is the net step count
       (+1 per next press, -1 per previous, coalesced like the toggles). */
   std::function<void(int delta)> onPresetStep;
 
 private:
   enum class Source : int { cc = 0, note = 1 };
-  enum class Kind : int { parameter = 0, blockPower = 1, stereoMode = 2, presetStep = 3 };
+  enum class Kind : int { parameter = 0, blockPower = 1, stereoMode = 2, presetStep = 3, blockStep = 4 };
 
   /** Virtual target id for the chain's stereo on/off (chain state, not an
       APVTS parameter; the UI catalog uses the same id). */
@@ -125,7 +140,7 @@ private:
     juce::RangedAudioParameter* param = nullptr;  // Kind::parameter only
     int blockIndex = -1;                          // Kind::blockPower only
     bool rightBlock = false;                      // Kind::blockPower only: Right lane
-    int presetDelta = 0;                          // Kind::presetStep only: +1 / -1
+    int presetDelta = 0;                          // Kind::presetStep / blockStep: +1 / -1
     Source source = Source::cc;
     int number = 0;       // CC number or note number
     bool toggle = false;  // derived: non-parameter kind, boolean param, or note source
@@ -149,8 +164,10 @@ private:
       for anything else. Bounded by the width of the pending-toggle bitmask. */
   static BlockPowerTarget blockPowerTargetFor(const juce::String& targetId);
 
+
   bool isValidTarget(const juce::String& targetId) const {
-    return blockPowerTargetFor(targetId).index >= 0 || targetId == kStereoTarget ||
+    return blockPowerTargetFor(targetId).index >= 0 || blockStepTargetFor(targetId).index >= 0 ||
+           targetId == kStereoTarget ||
            targetId == kPresetPrevTarget || targetId == kPresetNextTarget ||
            parameters.getParameter(targetId) != nullptr;
   }
@@ -188,6 +205,12 @@ private:
   std::atomic<juce::uint64> pendingRightBlockToggles{0};
   std::atomic<int> pendingStereoToggles{0};  // flip count; parity applies
   std::atomic<int> pendingPresetSteps{0};    // signed sum of ±1 steps
+  // Tone steps: a signed sum per block position and lane, plus a mask of the
+  // positions that moved so delivery scans only those. Fixed arrays, so the
+  // audio thread never allocates.
+  static constexpr int kMaxStepBlocks = 64;
+  std::array<std::array<std::atomic<int>, kMaxStepBlocks>, 2> pendingBlockSteps{};
+  std::array<std::atomic<juce::uint64>, 2> pendingBlockStepMask{};
   std::atomic<bool> mapDirty{false};                 // gate for onChanged
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiMapper)
