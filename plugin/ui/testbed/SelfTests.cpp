@@ -195,6 +195,7 @@ struct ScriptedSession : ToneSession {
     reply(Result<std::vector<TaxonomyEntry>>::fail("n/a"));
   }
   void selectTone(int, Done done) override { done("n/a"); }
+  void resolveTone(int, Reply<Tone> reply) override { reply(Result<Tone>::fail("n/a")); }
   void ensureNativeAuth(Done done) override { done("n/a"); }
   void login(LoginIntent) override {}
   void logout() override {}
@@ -958,6 +959,28 @@ struct ToneQueryTests : juce::UnitTest {
     expectEquals(static_cast<int>(page.data.size()), 2);
     expectEquals(page.page, 2);
     expectEquals(page.totalPages, 3);
+
+    beginTest("a query survives its JSON round trip (a block's browse context)");
+    ToneQuery full;
+    full.text = "plexi crunch";
+    full.setSort(ToneSort::newest);
+    full.gear = "amp";
+    full.format = "nam";
+    full.tags = {"crunch", "british"};
+    full.makes = {"Marshall"};
+    full.creators = {"some_user"};
+    full.calibrated = true;
+    full.verified = true;
+    expect(ToneQuery::fromVar(full.toVar()) == full);
+    ToneQuery profile;
+    profile.profile = Profile::favorited;
+    expect(ToneQuery::fromVar(profile.toVar()) == profile);
+
+    beginTest("a hostile saved query falls back to defaults, never into the request path");
+    const auto bad = ToneQuery::fromVar(juce::JSON::parse(
+        R"({"text":7,"sort":"drop-tables","gear":"amp&admin=1","format":"exe","profile":"../x","tags":"x"})"));
+    expect(bad == ToneQuery{});
+    expect(ToneQuery::fromVar(juce::var("nonsense")) == ToneQuery{});
   }
 };
 

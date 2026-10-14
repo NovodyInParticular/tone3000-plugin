@@ -22,6 +22,7 @@
 #include "T3kConfig.h"
 #include "ToneLoadFlow.h"
 #include "ToneSession.h"
+#include "ToneStepper.h"
 #include "UiClock.h"
 #include "UiPrefs.h"
 #include "UpdateCheck.h"
@@ -63,6 +64,7 @@ public:
         modelLoads(chain, t),
         connection(t),
         loadFlow(chain, connection, t),
+        stepper(chain, t, connection, toast),
         updates(t, prefs, b.pluginVersion(), updateNotice) {}
 
   Backend& backend;
@@ -86,6 +88,7 @@ public:
   ModelLoads modelLoads;
   ConnectionGate connection;
   ToneLoadFlow loadFlow;
+  ToneStepper stepper;
   UpdateCheck updates;
   Zoom zoom;
   Pointer pointer;
