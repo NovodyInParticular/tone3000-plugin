@@ -59,6 +59,12 @@ public:
   const std::string& focusBlock() const { return focus_; }
   void setFocusBlock(const std::string& blockId);
 
+  // The keyboard's way in (← / → step the focused block, Shift+← / → move
+  // the focus between blocks that have a cursor). False when there is
+  // nothing to act on, so the key can go elsewhere.
+  bool stepFocused(int delta);
+  bool moveFocus(int direction);
+
   // The browse context for a pick from the browser: `page` of `query`
   // (its results in order) with the cursor on `index`.
   static juce::var makeContext(const juce::var& query, const TonePage& page, int pageSize, int index);

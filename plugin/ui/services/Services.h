@@ -65,7 +65,9 @@ public:
         connection(t),
         loadFlow(chain, connection, t),
         stepper(chain, t, connection, toast),
-        updates(t, prefs, b.pluginVersion(), updateNotice) {}
+        updates(t, prefs, b.pluginVersion(), updateNotice) {
+    loadFlow.onToneLanded = [this](const std::string& id) { stepper.setFocusBlock(id); };
+  }
 
   Backend& backend;
   ToneSession& session;

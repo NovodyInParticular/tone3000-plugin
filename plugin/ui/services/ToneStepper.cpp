@@ -1,5 +1,7 @@
 #include "ToneStepper.h"
 
+#include <algorithm>
+
 #include "model/ToneQuery.h"
 
 namespace t3k::ui {
@@ -83,6 +85,29 @@ void ToneStepper::setFocusBlock(const std::string& blockId) {
   if (focus_ == blockId) return;
   focus_ = blockId;
   notify();
+}
+
+bool ToneStepper::stepFocused(int delta) {
+  // No focus yet (or it went stale): the first block with a cursor.
+  if (!cursor(focus_) && !moveFocus(+1)) return false;
+  step(focus_, delta);
+  return true;
+}
+
+bool ToneStepper::moveFocus(int direction) {
+  std::vector<std::string> ids;
+  for (const auto* item : chain_.state().toneBlocks())
+    if (cursor(item->blockId)) ids.push_back(item->blockId);
+  if (ids.empty()) return false;
+  const auto it = std::find(ids.begin(), ids.end(), focus_);
+  if (it == ids.end()) {
+    setFocusBlock(direction >= 0 ? ids.front() : ids.back());
+    return true;
+  }
+  const auto n = static_cast<int>(ids.size());
+  const int at = static_cast<int>(std::distance(ids.begin(), it));
+  setFocusBlock(ids[static_cast<size_t>(((at + (direction >= 0 ? 1 : -1)) % n + n) % n)]);
+  return true;
 }
 
 void ToneStepper::step(const std::string& blockId, int delta) {
