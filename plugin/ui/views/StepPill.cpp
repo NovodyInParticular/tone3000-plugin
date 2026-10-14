@@ -47,7 +47,7 @@ void StepPill::paint(juce::Graphics& g) {
     g.setColour(theme::kBrandYellow.withAlpha(0.7f));
     g.drawRoundedRectangle(box.reduced(0.5f), box.getHeight() / 2, 1.0f);
   }
-  const auto label = cursor_->busy ? juce::String("…")
+  const auto label = cursor_->busy ? juce::String::fromUTF8("\xe2\x80\xa6")
                                    : juce::String(cursor_->position) + "/" + juce::String(cursor_->total);
   g.setColour(cursor_->busy ? theme::kMuted : theme::kWhite);
   g.setFont(Fonts::mono(11));

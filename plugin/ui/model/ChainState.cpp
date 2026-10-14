@@ -138,6 +138,23 @@ ChainItem parseItem(const juce::var& v) {
   item.outputLevelDbu = optNum(v, "outputLevelDbu");
   item.params = parseParams(v["params"]);
   item.browse = v["browse"];
+  if (const auto& d = v["dualIr"]; d.isObject()) {
+    DualIrState s;
+    s.blend = static_cast<float>(static_cast<double>(d.getProperty("blend", 0.5)));
+    s.levelA = static_cast<float>(static_cast<double>(d.getProperty("levelA", 0.0)));
+    s.levelB = static_cast<float>(static_cast<double>(d.getProperty("levelB", 0.0)));
+    s.alignMs = static_cast<float>(static_cast<double>(d.getProperty("alignMs", 0.0)));
+    s.invertA = static_cast<bool>(d.getProperty("invertA", false));
+    s.invertB = static_cast<bool>(d.getProperty("invertB", false));
+    s.building = static_cast<bool>(d.getProperty("building", false));
+    if (const auto& b = d["b"]; b.isObject()) {
+      s.hasB = true;
+      s.bTitle = b["title"].toString();
+      s.bLocal = static_cast<bool>(b.getProperty("local", false));
+      s.bLoaded = static_cast<bool>(b.getProperty("loaded", false));
+    }
+    item.dualIr = s;
+  }
   return item;
 }
 

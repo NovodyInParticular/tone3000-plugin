@@ -24,6 +24,8 @@ public:
   // Open the OS picker (one at a time: a second request while a dialog is up
   // is ignored, like the editor resolved it as cancelled) and load the pick.
   void pick(const std::string& targetBlockId, Kind kind);
+  // Pick a .wav as the second IR of an IR block (dual cab).
+  void pickSecondIr(const std::string& blockId);
   // An OS drag dropped files onto a tile: load the first (a file or folder).
   void drop(const std::string& targetBlockId, const juce::StringArray& paths);
 

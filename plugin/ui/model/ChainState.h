@@ -106,6 +106,15 @@ struct ToneSummary {
   bool isNam() const { return format.equalsIgnoreCase("nam"); }
 };
 
+// Dual cab IR state of an IR block (plugin/include/DualIr.h).
+struct DualIrState {
+  float blend = 0.5f, levelA = 0.0f, levelB = 0.0f, alignMs = 0.0f;
+  bool invertA = false, invertB = false;
+  bool hasB = false, bLocal = false, bLoaded = false;
+  juce::String bTitle;
+  bool building = false;  // a blend change or B's download is on its way
+};
+
 struct ChainItem {
   std::string blockId;
   bool isInsert = true;
@@ -123,6 +132,8 @@ struct ChainItem {
   // The result list the tone was picked from (plugin/include/BrowseContext.h,
   // already sanitized by native); void when there is none. ToneStepper reads it.
   juce::var browse;
+  // IR blocks only.
+  std::optional<DualIrState> dualIr;
 
   bool isTone() const { return !isInsert; }
 };

@@ -27,6 +27,9 @@ public:
   // gate first. In stereo the active side follows the tapped lane, the
   // fallback for when the slot id goes stale mid-flow.
   void select(ChainSide side, const std::string& targetId);
+  // Pick a second IR (dual cab) for an IR block: the browser opens, and the
+  // pick lands as the block's B instead of replacing it.
+  void selectSecondIr(const std::string& blockId);
   // Abandon the pending target (browser closed, logout, preset load).
   void clearPendingTargets();
 
@@ -55,6 +58,7 @@ private:
   std::string pendingSwapId_;
   std::string pendingInsertId_;
   juce::var pickContext_;
+  std::string pendingSecondIrId_;
 };
 
 }  // namespace t3k::ui

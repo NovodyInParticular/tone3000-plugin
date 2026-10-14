@@ -16,6 +16,22 @@ void LocalFiles::drop(const std::string& targetBlockId, const juce::StringArray&
   report(chain_.loadLocalTonePath(juce::File(paths[0]), targetBlockId));
 }
 
+void LocalFiles::pickSecondIr(const std::string& blockId) {
+  if (chooser_ != nullptr) return;
+  chooser_ = std::make_unique<juce::FileChooser>("Load Second IR", juce::File{}, juce::String("*.wav"));
+  juce::WeakReference<LocalFiles> self(this);
+  chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                        [self, blockId](const juce::FileChooser& chooser) {
+                          if (self == nullptr) return;
+                          juce::MessageManager::callAsync([self] {
+                            if (self != nullptr) self->chooser_.reset();
+                          });
+                          const auto results = chooser.getResults();
+                          if (results.isEmpty()) return;
+                          self->report(self->chain_.setSecondIrFile(blockId, results.getReference(0)));
+                        });
+}
+
 void LocalFiles::pick(const std::string& targetBlockId, Kind kind) {
   if (chooser_ != nullptr) return;
   const bool folder = kind == Kind::folder;

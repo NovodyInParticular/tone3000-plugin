@@ -38,6 +38,7 @@
 #include "widgets/SegmentedText.h"
 #include "widgets/ToneImage.h"
 #include "views/StepPill.h"
+#include "views/block/DualIrView.h"
 
 namespace t3k::ui {
 
@@ -72,7 +73,7 @@ public:
   void resized() override;
 
 private:
-  enum class Body { tone, eq, info };
+  enum class Body { tone, eq, info, dual };
   class Indicator;
 
   // ToneSession::Listener / UiPrefs::Listener
@@ -84,7 +85,7 @@ private:
   void layoutHeader(juce::Rectangle<int> header);
   void layoutToneBody(juce::Rectangle<int> body);
   int layoutInfoBody(juce::Rectangle<int> body);
-  Body body() const { return showEq_ ? Body::eq : showInfo_ ? Body::info : Body::tone; }
+  Body body() const { return showDual_ ? Body::dual : showEq_ ? Body::eq : showInfo_ ? Body::info : Body::tone; }
   void syncFromBlock();
   void syncHeader();
   void syncMeta();
@@ -92,6 +93,7 @@ private:
   void setBodyView();
   void setShowEq(bool show);
   void setShowInfo(bool show);
+  void setShowDual(bool show);
 
   bool isNam() const { return block_.tone.isNam(); }
   bool isLocal() const { return block_.tone.local; }
@@ -132,6 +134,9 @@ private:
   // Previous / next through the search the tone came from, centred in the
   // header (the gallery tile carries the same pill).
   std::unique_ptr<StepPill> step_;
+  // Dual cab IR: the header toggle (IR blocks only) and the body it opens.
+  ChromeTextButton dual_{juce::String::fromUTF8("2\xc3\x97IR"), help::Key::dualIrToggle};
+  std::unique_ptr<DualIrView> dualView_;
 
   // Body (tone / info views live in `body_`, which dims while bypassed)
   DimGroup body_;
@@ -152,7 +157,7 @@ private:
   // Optimistic UI state
   bool enabled_ = true, normalizeOn_ = true, slimFull_ = false;
   bool eqOn_ = true, eqPre_ = false;
-  bool showEq_ = false, showInfo_ = false;
+  bool showEq_ = false, showInfo_ = false, showDual_ = false;
   BlockEqView::View eqViewMode_ = BlockEqView::View::sliders;
   bool switchingModel_ = false;
 

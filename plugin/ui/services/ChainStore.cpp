@@ -28,6 +28,22 @@ auto ChainStore::run(Fn&& fn) -> decltype(fn()) {
   return result;
 }
 
+bool ChainStore::setSecondIr(const std::string& blockId, const juce::String& toneJson) {
+  return run([&] { return backend_.setBlockSecondIr(blockId, toneJson); });
+}
+
+juce::String ChainStore::setSecondIrFile(const std::string& blockId, const juce::File& file) {
+  return localLoadResult(run([&] { return backend_.setBlockSecondIrFile(blockId, file); }));
+}
+
+bool ChainStore::clearSecondIr(const std::string& blockId) {
+  return run([&] { return backend_.clearBlockSecondIr(blockId); });
+}
+
+bool ChainStore::setDualIrParam(const std::string& blockId, const juce::String& param, double value) {
+  return run([&] { return backend_.setBlockDualIrParam(blockId, param, value); });
+}
+
 juce::String ChainStore::localLoadResult(const juce::var& res) {
   if (res.isObject() && res.getProperty("blockId", "").toString().isNotEmpty()) return {};
   const auto error = res.isObject() ? res.getProperty("error", "").toString() : juce::String();

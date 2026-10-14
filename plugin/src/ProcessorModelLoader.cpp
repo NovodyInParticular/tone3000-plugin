@@ -1522,6 +1522,7 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
       block.mixNormalized = block.irIsLong ? 0.5f : 1.0f;
 
     block.irNormalizationGainLinear = prepared.irNormalizationGainLinear;
+    block.dualIrAppliedGeneration = block.dualIrGeneration;
     block.irNormalizationSmoother.reset(chainSampleRate(), 0.05f);
     block.irNormalizationSmoother.setCurrentAndTargetValue(block.irNormalizationGainLinear);
 
@@ -1576,3 +1577,255 @@ void TONE3000Processor::applyPreparedModelToChainBlock(ChainBlock& block, ChainB
   }
 }
 
+
+// #####################################
+// DUAL CAB IR
+// #####################################
+
+std::vector<uint8_t> TONE3000Processor::withSecondIr(const std::string& blockId, ChainBlockType type,
+                                                     const std::vector<uint8_t>& primary,
+                                                     juce::String* signatureUsed) {
+  if (type != ChainBlockType::IR)
+    return primary;
+  std::vector<uint8_t> second;
+  dualir::Params params;
+  {
+    juce::ScopedLock lock(chainMutex);
+    const ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr || block->irBModelId == 0)
+      return primary;
+    const auto it = block->modelCache.find(block->irBModelId);
+    if (it == block->modelCache.end())
+      return primary;  // B still downloading: A alone until it lands (signature "" ≠ the block's)
+    second = it->second;
+    params = block->irBlend;
+    if (signatureUsed != nullptr)
+      *signatureUsed = block->dualIrSignature();
+  }
+  auto mixed = dualir::combine(primary, second, params, kChainBaseSampleRate, kMaxIrSeconds);
+  if (mixed.empty()) {
+    juce::Logger::writeToLog("[DualIr] Couldn't blend the second IR into block " + juce::String(blockId) +
+                             "; playing the first alone");
+    return primary;
+  }
+  return mixed;
+}
+
+void TONE3000Processor::requeueIfBlendStale(ChainBlock& block, ChainBlockType type,
+                                            const juce::String& signatureUsed) {
+  // Not while B is still downloading: its arrival queues the rebuild
+  // (secondIrFetched), and requeueing before then would only loop.
+  const bool bReady = block.irBModelId == 0 || block.modelCache.count(block.irBModelId) != 0;
+  if (type == ChainBlockType::IR && block.loaded && bReady && block.dualIrSignature() != signatureUsed)
+    queueDualIrRebuild(block, 0);
+}
+
+void TONE3000Processor::queueDualIrRebuild(ChainBlock& block, int debounceMs) {
+  // Called under chainMutex. Bump first: any rebuild already queued or
+  // running now loses to this one when it checks.
+  const int generation = ++block.dualIrGeneration;
+  struct RebuildJob : public juce::ThreadPoolJob {
+    TONE3000Processor& processor;
+    std::string blockId;
+    int generation, debounceMs;
+    RebuildJob(TONE3000Processor& p, std::string id, int g, int d)
+        : ThreadPoolJob("Dual IR Rebuild"), processor(p), blockId(std::move(id)), generation(g), debounceMs(d) {}
+    JobStatus runJob() override {
+      // A knob drag fires many changes; let them settle so only the last
+      // one pays for a kernel build.
+      if (debounceMs > 0)
+        juce::Thread::sleep(debounceMs);
+      if (!shouldExit())
+        processor.rebuildDualIr(blockId, generation);
+      return jobHasFinished;
+    }
+  };
+  loadingThreadPool.addJob(new RebuildJob(*this, block.id, generation, debounceMs), true);
+}
+
+void TONE3000Processor::rebuildDualIr(const std::string& blockId, int generation) {
+  std::vector<uint8_t> primary;
+  {
+    juce::ScopedLock lock(chainMutex);
+    const ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr || block->type != ChainBlockType::IR || block->dualIrGeneration != generation ||
+        block->modelLoading)
+      return;  // gone, superseded, or a model load (which blends B itself) is in flight
+    const auto it = block->modelCache.find(block->activeModelId);
+    if (it == block->modelCache.end())
+      return;
+    primary = it->second;
+  }
+
+  juce::String signatureUsed;
+  PreparedBlockModel prepared = prepareBlockModelOffThread(
+      ChainBlockType::IR, withSecondIr(blockId, ChainBlockType::IR, primary, &signatureUsed), "dual-ir.wav", 0.0);
+  auto crossfadeShell = crossfadeShellFor(blockId, ChainBlockType::IR, prepared);
+  const bool crossfadeArmed = crossfadeShell != nullptr;
+  if (!crossfadeArmed)
+    requestSwapFadeAndWait(blockId, prepared.success);
+  {
+    juce::ScopedLock lock(chainMutex);
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr)
+      return;
+    if (block->dualIrGeneration != generation || block->modelLoading) {
+      block->swapFadePending.store(false);  // never leave it faded out
+      return;
+    }
+    applyPreparedModelToChainBlock(*block, ChainBlockType::IR, prepared, std::move(crossfadeShell));
+    requeueIfBlendStale(*block, ChainBlockType::IR, signatureUsed);
+  }
+  if (crossfadeArmed)
+    finishCrossfade(blockId);
+}
+
+bool TONE3000Processor::setBlockSecondIr(const std::string& blockId, const juce::String& toneJson) {
+  const juce::var tone = juce::JSON::parse(toneJson);
+  const auto* models = tone["models"].getArray();
+  if (tone.getDynamicObject() == nullptr || models == nullptr || models->isEmpty())
+    return false;
+  const juce::String format = tone["format"].toString().toLowerCase();
+  if (format == "nam")
+    return false;  // B must be an IR
+  const auto model = (*models)[0];
+  const int modelId = static_cast<int>(model["id"]);
+  const juce::String modelUrl = model["model_url"].toString();
+  if (modelId <= 0 || modelUrl.isEmpty())
+    return false;
+
+  // One model, like a catalog block persists.
+  auto stored = tone.clone();
+  stored.getDynamicObject()->setProperty("models", juce::Array<juce::var>{model});
+  bool cached = false;
+  {
+    juce::ScopedLock lock(chainMutex);
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr || block->type != ChainBlockType::IR)
+      return false;
+    pushChainHistory();
+    block->irBModelId = modelId;
+    block->irBToneVar = stored;
+    block->irBToneJson = juce::JSON::toString(stored, true);
+    cached = block->modelCache.count(modelId) != 0;
+    if (cached)
+      queueDualIrRebuild(*block, 0);
+    bumpChainRevision();
+  }
+  if (cached)
+    return true;
+
+  struct FetchJob : public juce::ThreadPoolJob {
+    TONE3000Processor& processor;
+    std::string blockId;
+    int modelId;
+    juce::String url;
+    FetchJob(TONE3000Processor& p, std::string id, int m, juce::String u)
+        : ThreadPoolJob("Second IR Fetch"), processor(p), blockId(std::move(id)), modelId(m), url(std::move(u)) {}
+    JobStatus runJob() override {
+      processor.secondIrFetched(blockId, modelId, processor.fetchModelFromUrl(url, [this] { return shouldExit(); }));
+      return jobHasFinished;
+    }
+  };
+  loadingThreadPool.addJob(new FetchJob(*this, blockId, modelId, modelUrl), true);
+  return true;
+}
+
+void TONE3000Processor::secondIrFetched(const std::string& blockId, int modelId, std::vector<uint8_t> bytes) {
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->irBModelId != modelId)
+    return;  // removed, or B changed while this downloaded
+  if (bytes.empty()) {
+    juce::Logger::writeToLog("[DualIr] Second IR download failed for block " + juce::String(blockId) +
+                             "; playing the first alone");
+    block->irBModelId = 0;
+    block->irBToneJson = {};
+    block->irBToneVar = juce::var();
+    bumpChainRevision();
+    return;
+  }
+  block->modelCache[modelId] = std::move(bytes);
+  queueDualIrRebuild(*block, 0);
+}
+
+juce::var TONE3000Processor::setBlockSecondIrFile(const std::string& blockId, const juce::File& file) {
+  juce::String error;
+  const juce::var model = stashLocalFileFromDisk(file, error);
+  if (error.isNotEmpty() || model.getDynamicObject() == nullptr)
+    return localToneError("Couldn't load the second IR", error.isNotEmpty() ? error : "Unreadable file");
+  if (model["model_url"].toString().endsWithIgnoreCase(".nam"))
+    return localToneError("Couldn't load the second IR", "Pick an IR (.wav) file, not a .nam capture.");
+
+  juce::MemoryBlock data;
+  if (!file.loadFileAsData(data) || data.getSize() == 0)
+    return localToneError("Couldn't load the second IR", "Couldn't read the file.");
+  const auto* raw = static_cast<const uint8_t*>(data.getData());
+
+  juce::DynamicObject::Ptr tone = new juce::DynamicObject();
+  tone->setProperty("id", 0);
+  tone->setProperty("title", file.getFileNameWithoutExtension());
+  tone->setProperty("format", "ir");
+  tone->setProperty("local", true);
+  tone->setProperty("models", juce::Array<juce::var>{model});
+  const int modelId = static_cast<int>(model["id"]);
+  {
+    juce::ScopedLock lock(chainMutex);
+    ChainBlock* block = findBlockById(blockId);
+    if (block == nullptr || block->type != ChainBlockType::IR)
+      return localToneError("Couldn't load the second IR", "Only a cab / IR block takes a second IR.");
+    pushChainHistory();
+    block->irBModelId = modelId;
+    block->irBToneVar = juce::var(tone.get());
+    block->irBToneJson = juce::JSON::toString(block->irBToneVar, true);
+    block->modelCache[modelId].assign(raw, raw + data.getSize());
+    queueDualIrRebuild(*block, 0);
+    bumpChainRevision();
+  }
+  juce::DynamicObject::Ptr ok = new juce::DynamicObject();
+  ok->setProperty("blockId", juce::String(blockId));
+  return juce::var(ok.get());
+}
+
+bool TONE3000Processor::clearBlockSecondIr(const std::string& blockId) {
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->irBModelId == 0)
+    return false;
+  pushChainHistory();
+  // B's bytes stay in the in-memory cache (an undo brings it straight
+  // back); persistence drops them once nothing references the id.
+  block->irBModelId = 0;
+  block->irBToneJson = {};
+  block->irBToneVar = juce::var();
+  queueDualIrRebuild(*block, 0);
+  bumpChainRevision();
+  return true;
+}
+
+bool TONE3000Processor::setBlockDualIrParam(const std::string& blockId, const juce::String& param, double value) {
+  if (!std::isfinite(value))
+    return false;
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type != ChainBlockType::IR)
+    return false;
+  auto p = block->irBlend;
+  const auto v = static_cast<float>(value);
+  if (param == "blend") p.blend = v;
+  else if (param == "levelA") p.levelADb = v;
+  else if (param == "levelB") p.levelBDb = v;
+  else if (param == "invertA") p.invertA = value > 0.5;
+  else if (param == "invertB") p.invertB = value > 0.5;
+  else if (param == "alignMs") p.alignMs = v;
+  else
+    return false;
+  const bool continuous = param != "invertA" && param != "invertB";
+  pushChainHistory(continuous ? "dualIr:" + juce::String(blockId) + ":" + param : juce::String());
+  block->irBlend = p.sanitized();
+  // Only an engaged B changes the sound; otherwise the setting just waits.
+  if (block->irBModelId != 0)
+    queueDualIrRebuild(*block, continuous ? 40 : 0);
+  bumpChainRevision();
+  return true;
+}

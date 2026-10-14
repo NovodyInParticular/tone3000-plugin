@@ -43,6 +43,11 @@ public:
   juce::String loadLocalTonePath(const juce::File& source, const std::string& targetId);
   juce::String loadLocalToneUrls(const juce::Array<juce::URL>& sources, const std::string& targetId);
   bool swapTone(const std::string& blockId, const juce::String& toneJson, const juce::var& browse = {});
+  // Dual cab IR. setSecondIrFile returns "" or a user-facing error.
+  bool setSecondIr(const std::string& blockId, const juce::String& toneJson);
+  juce::String setSecondIrFile(const std::string& blockId, const juce::File& file);
+  bool clearSecondIr(const std::string& blockId);
+  bool setDualIrParam(const std::string& blockId, const juce::String& param, double value);
   bool refreshToneMetadata(const juce::String& toneJson);
   bool switchModel(const std::string& blockId, int modelId, const juce::var& model);
   bool retryModelLoad(const std::string& blockId);

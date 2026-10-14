@@ -34,6 +34,16 @@ public:
                               const std::string& targetInsertId) override;
   bool swapTone(const std::string& blockId, const juce::String& toneJson, const juce::var& browse = {}) override;
   void prefetchModel(const juce::String& modelUrl) override;
+  bool setBlockSecondIr(const std::string& blockId, const juce::String& toneJson) override {
+    return processor_.setBlockSecondIr(blockId, toneJson);
+  }
+  juce::var setBlockSecondIrFile(const std::string& blockId, const juce::File& file) override {
+    return processor_.setBlockSecondIrFile(blockId, file);
+  }
+  bool clearBlockSecondIr(const std::string& blockId) override { return processor_.clearBlockSecondIr(blockId); }
+  bool setBlockDualIrParam(const std::string& blockId, const juce::String& param, double value) override {
+    return processor_.setBlockDualIrParam(blockId, param, value);
+  }
   bool refreshToneMetadata(const juce::String& toneJson) override;
   bool switchModel(const std::string& blockId, int modelId, const juce::var& model) override;
   bool retryModelLoad(const std::string& blockId) override;

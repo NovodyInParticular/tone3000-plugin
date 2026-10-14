@@ -180,6 +180,17 @@ public:
   // result list to step through).
   bool swapTone(const std::string& blockId, const juce::String& toneJsonString,
                 const juce::var& browse = {});
+  // Dual cab IR (DualIr.h) on an IR block. `toneJson` is a one-model IR
+  // tone (the browser's pick); the file variant takes a local .wav. Both
+  // fetch / read B, then rebuild the block's kernel with the IR→IR
+  // crossfade. Undoable. False for non-IR blocks or unusable input.
+  bool setBlockSecondIr(const std::string& blockId, const juce::String& toneJson);
+  juce::var setBlockSecondIrFile(const std::string& blockId, const juce::File& file);  // {ok} / {error}
+  bool clearBlockSecondIr(const std::string& blockId);
+  // "blend" (0..1), "levelA" / "levelB" (dB), "invertA" / "invertB" (0/1),
+  // "alignMs". A knob drag coalesces into one undo step and one rebuild.
+  bool setBlockDualIrParam(const std::string& blockId, const juce::String& param, double value);
+
   // Fetch a catalog model into the disk cache ahead of need (the previous /
   // next neighbours of a stepped block), so stepping to it loads without the
   // network. No-op when cached, already queued, local, or the queue is full.
@@ -1144,6 +1155,20 @@ private:
   // in reverse order, so the pools (and their jobs) go first.
   std::unique_ptr<ModelDiskCache> modelDiskCache =
       std::make_unique<ModelDiskCache>(ModelDiskCache::defaultRoot());
+  // Dual IR plumbing: the block's IR bytes with B blended in (unchanged
+  // when there is no B, or for NAM), and the debounced kernel rebuild.
+  // `signatureUsed` receives the blend it baked in (ChainBlock::
+  // dualIrSignature); the apply compares it against the block's.
+  std::vector<uint8_t> withSecondIr(const std::string& blockId, ChainBlockType type,
+                                    const std::vector<uint8_t>& primary, juce::String* signatureUsed = nullptr);
+  // After an IR apply under chainMutex: a load that baked an older blend
+  // (two loads raced, or the blend moved mid-load) queues one more rebuild.
+  void requeueIfBlendStale(ChainBlock& block, ChainBlockType type, const juce::String& signatureUsed);
+  void queueDualIrRebuild(ChainBlock& block, int debounceMs);
+  void rebuildDualIr(const std::string& blockId, int generation);
+  // B's bytes landed (or failed) after setBlockSecondIr's fetch.
+  void secondIrFetched(const std::string& blockId, int modelId, std::vector<uint8_t> bytes);
+
   // Window-closed tone steps (stepBlock): API config, and the newest step
   // per block so an older resolve landing late is dropped (message thread).
   juce::String toneApiOrigin;

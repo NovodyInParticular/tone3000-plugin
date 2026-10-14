@@ -191,6 +191,16 @@ std::map<Key, String> buildTable() {
   t[Key::swapTone] = U("Swap: replace this tone, keeping its slot.");
   t[Key::stepPrev] = U("Previous: load the previous result of the search this tone came from.");
   t[Key::stepNext] = U("Next: load the next result of the search this tone came from.");
+  t[Key::dualIrToggle] = U("2×IR: blend a second cab IR into this one.");
+  t[Key::dualIrBlend] = knobDesktop("Blend", "How much of IR B against IR A.");
+  t[Key::dualIrAlign] = knobDesktop("Align", "Shift IR B against A until the blend stops sounding hollow (comb filtering).");
+  t[Key::dualIrLevelA] = knobDesktop("Level A", "Trim IR A within the blend.");
+  t[Key::dualIrLevelB] = knobDesktop("Level B", "Trim IR B within the blend.");
+  t[Key::dualIrInvertA] = U("Ø A: flip IR A's polarity.");
+  t[Key::dualIrInvertB] = U("Ø B: flip IR B's polarity (try it when the blend sounds thin).");
+  t[Key::dualIrLoad] = U("Load: pick IR B from TONE3000.");
+  t[Key::dualIrFile] = U("File: pick IR B from a local .wav file.");
+  t[Key::dualIrRemove] = U("Remove: back to a single IR.");
   t[Key::removeBlock] = U("Remove: delete this block.");
   t[Key::panLeft] = knobDesktop("Pan L", "Left chain, hard left ↔ center.");
   t[Key::panRight] = knobDesktop("Pan R", "Right chain, center ↔ hard right.");

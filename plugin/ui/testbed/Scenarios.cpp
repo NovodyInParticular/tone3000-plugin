@@ -116,6 +116,13 @@ const std::map<juce::String, Drive>& drives() {
        }},
       {"main-detail", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"main-detail-browse", [](PluginRoot&, MockBackend&) { wait(300); }},
+      {"main-detail-ir", [](PluginRoot&, MockBackend&) { wait(300); }},
+      {"main-detail-dual",
+       [](PluginRoot& root, MockBackend&) {
+         wait(300);
+         clickByHelp(root, juce::String::fromUTF8("2\xc3\x97IR:"));
+         wait(300);
+       }},
       {"load-detail-loading", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"load-detail-failed", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"main-detail-info",

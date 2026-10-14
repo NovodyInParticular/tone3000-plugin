@@ -49,6 +49,11 @@ public:
   virtual juce::var loadLocalToneUrls(const juce::Array<juce::URL>& sources,
                                       const std::string& targetInsertId) = 0;
   virtual bool swapTone(const std::string& blockId, const juce::String& toneJson, const juce::var& browse = {}) = 0;
+  // Dual cab IR on an IR block (see plugin/include/DualIr.h).
+  virtual bool setBlockSecondIr(const std::string& blockId, const juce::String& toneJson) = 0;
+  virtual juce::var setBlockSecondIrFile(const std::string& blockId, const juce::File& file) = 0;
+  virtual bool clearBlockSecondIr(const std::string& blockId) = 0;
+  virtual bool setBlockDualIrParam(const std::string& blockId, const juce::String& param, double value) = 0;
   // Fetch a catalog model into the disk cache ahead of need (best effort).
   virtual void prefetchModel(const juce::String& modelUrl) = 0;
   virtual bool refreshToneMetadata(const juce::String& toneJson) = 0;

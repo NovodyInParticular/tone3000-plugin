@@ -9,6 +9,7 @@
 #include <vector>
 #include "BlockEq.h"
 #include "BrowseContext.h"
+#include "DualIr.h"
 #include "BlockSpectrum.h"
 #include "ChainOversampler.h"
 #include "NamEngine.h"
@@ -158,7 +159,7 @@ struct ChainBlock {
   // persisting those bytes is what bloated DAW projects by hundreds of MB
   // (issue #127).
   bool referencesModel(int modelId) const {
-    if (modelId == activeModelId)
+    if (modelId == activeModelId || (irBModelId != 0 && modelId == irBModelId))
       return true;
     if (const auto* models = toneVar["models"].getArray())
       for (const auto& model : *models)
@@ -229,6 +230,33 @@ struct ChainBlock {
   // in the same breath). The message thread drains it in getChainState and
   // writes the log line there; string building/logging is not RT-safe.
   std::atomic<bool> rtProcessingFailed{false};
+
+  // Dual cab IR (DualIr.h), IR blocks only: a second IR ("B") blended into
+  // the block's own. B is a one-model tone (catalog or local file) whose
+  // bytes live in modelCache under irBModelId (so they persist and restore
+  // like the active model's); 0 = single IR, the default. The blend is
+  // baked into one kernel off-thread, so it costs one convolver, and a
+  // change rebuilds the engine through the IR→IR crossfade.
+  int irBModelId{0};
+  juce::String irBToneJson;
+  juce::var irBToneVar;
+  dualir::Params irBlend;
+  // Rebuild coalescing: each change bumps it, and a rebuild only applies
+  // while it is still the newest (under chainMutex).
+  int dualIrGeneration{0};
+  // The generation the live kernel was built at (any IR apply stamps the
+  // current one: model loads blend B in too). Differs while a rebuild is due.
+  int dualIrAppliedGeneration{0};
+  // What the loaded kernel was built from; a restore whose settings change
+  // it rebuilds the engine even when the model itself didn't change.
+  juce::String dualIrSignature() const {
+    if (irBModelId == 0)
+      return {};
+    const auto p = irBlend.sanitized();
+    return juce::String(irBModelId) + "|" + juce::String(p.blend, 4) + "|" + juce::String(p.levelADb, 3) + "|" +
+           juce::String(p.levelBDb, 3) + "|" + juce::String(int(p.invertA)) + juce::String(int(p.invertB)) + "|" +
+           juce::String(p.alignMs, 4);
+  }
 
   // Swap crossfade (see RetiringModel): while `retiring` is set and
   // `crossfadeDone` is false, the audio thread runs both models and blends

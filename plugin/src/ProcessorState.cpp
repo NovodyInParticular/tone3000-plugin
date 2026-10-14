@@ -207,6 +207,18 @@ juce::ValueTree TONE3000Processor::serializeBlockSettings(const ChainBlock& bloc
     blockState.setProperty("activeModelId", block.activeModelId, nullptr);
     if (block.browse.isObject())
       blockState.setProperty("browse", browsecontext::toString(block.browse), nullptr);
+    if (block.irBModelId != 0) {
+      blockState.setProperty("irBModelId", block.irBModelId, nullptr);
+      blockState.setProperty("irBToneJson", block.irBToneJson, nullptr);
+    }
+    // The blend settings persist even without a B, so loading one back in
+    // (or an undo) lands on the user's last blend.
+    blockState.setProperty("irBlend", block.irBlend.blend, nullptr);
+    blockState.setProperty("irLevelA", block.irBlend.levelADb, nullptr);
+    blockState.setProperty("irLevelB", block.irBlend.levelBDb, nullptr);
+    blockState.setProperty("irInvertA", block.irBlend.invertA, nullptr);
+    blockState.setProperty("irInvertB", block.irBlend.invertB, nullptr);
+    blockState.setProperty("irAlignMs", block.irBlend.alignMs, nullptr);
     blockState.appendChild(block.eq.toValueTree(), nullptr);
   }
 
@@ -238,6 +250,29 @@ void TONE3000Processor::applyBlockSettings(ChainBlock& block, const juce::ValueT
     prepareBlockForChainRate(block);
     // Absent in state from before browse contexts existed: no cursor.
     block.browse = browsecontext::fromString(blockState.getProperty("browse").toString());
+
+    // Dual IR: absent in older state = single IR at the default blend. B's
+    // tone JSON must parse to an object with a positive model id to count.
+    dualir::Params blend;
+    blend.blend = static_cast<float>(blockState.getProperty("irBlend", 0.5f));
+    blend.levelADb = static_cast<float>(blockState.getProperty("irLevelA", 0.0f));
+    blend.levelBDb = static_cast<float>(blockState.getProperty("irLevelB", 0.0f));
+    blend.invertA = static_cast<bool>(blockState.getProperty("irInvertA", false));
+    blend.invertB = static_cast<bool>(blockState.getProperty("irInvertB", false));
+    blend.alignMs = static_cast<float>(blockState.getProperty("irAlignMs", 0.0f));
+    block.irBlend = blend.sanitized();
+    const int irBModelId = static_cast<int>(blockState.getProperty("irBModelId", 0));
+    const juce::String irBToneJson = blockState.getProperty("irBToneJson").toString().substring(0, 64 * 1024);
+    const juce::var irBToneVar = juce::JSON::parse(irBToneJson);
+    if (irBModelId > 0 && irBToneVar.isObject()) {
+      block.irBModelId = irBModelId;
+      block.irBToneJson = irBToneJson;
+      block.irBToneVar = irBToneVar;
+    } else {
+      block.irBModelId = 0;
+      block.irBToneJson = {};
+      block.irBToneVar = juce::var();
+    }
   }
 }
 

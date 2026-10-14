@@ -57,6 +57,28 @@ inline const KnobScale& gainDb() {
   return s;
 }
 
+// Dual cab IR (plugin/include/DualIr.h): the B share, and B's offset
+// against A in ms with its sample count at the 48 kHz chain base rate.
+inline const KnobScale& dualIrBlend() {
+  static const KnobScale s = [] {
+    auto k = make([](double n) { return n * 100; }, [](double d) { return d / 100; }, "%", 0);
+    k.format = [](double n) { return "B " + labels::toFixed(n * 100, 0) + " %"; };
+    return k;
+  }();
+  return s;
+}
+inline const KnobScale& dualIrAlignMs() {
+  static const KnobScale s = [] {
+    auto k = linear(-2, 2, "ms", 2);
+    k.format = [](double n) {
+      const double ms = -2 + n * 4;
+      return labels::toFixed(ms, 2) + juce::String::fromUTF8(" ms \xc2\xb7 ") + labels::toFixed(ms * 48.0, 1) + " smp";
+    };
+    return k;
+  }();
+  return s;
+}
+
 // Stereo balance trim: 0.5 = centred, ±12 dB per channel at the ends.
 inline const KnobScale& balanceDb() {
   static const KnobScale s = linear(-12, 12, "dB", 1);

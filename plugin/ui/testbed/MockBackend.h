@@ -39,6 +39,10 @@ public:
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>&, const std::string&) override;
   bool swapTone(const std::string&, const juce::String&, const juce::var& = {}) override { return true; }
   void prefetchModel(const juce::String&) override {}
+  bool setBlockSecondIr(const std::string&, const juce::String&) override { return true; }
+  juce::var setBlockSecondIrFile(const std::string&, const juce::File&) override { return {}; }
+  bool clearBlockSecondIr(const std::string&) override { return true; }
+  bool setBlockDualIrParam(const std::string&, const juce::String&, double) override { return true; }
   bool refreshToneMetadata(const juce::String&) override { return true; }
   bool switchModel(const std::string&, int, const juce::var&) override { return true; }
   bool retryModelLoad(const std::string&) override { return true; }

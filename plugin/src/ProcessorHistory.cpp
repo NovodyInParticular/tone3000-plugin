@@ -142,7 +142,11 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
       block = std::make_unique<ChainBlock>(blockId, type);
     }
 
+    const juce::String blendBefore = block->dualIrSignature();
     applyBlockSettings(*block, blockState);
+    // A restore that only moves the dual-IR blend (undo of a knob, a preset
+    // with another B) still has to rebuild the baked kernel.
+    const bool blendChanged = type == ChainBlockType::IR && block->dualIrSignature() != blendBefore;
 
     if (type == ChainBlockType::INSERT) {
       target.push_back(std::move(block));
@@ -163,7 +167,7 @@ void TONE3000Processor::reconcileChainFromTree(const juce::ValueTree& chainState
     // Engines survive only when the loaded model is still the right one.
     // Everything else (fresh block, model switch, load still in flight)
     // goes through the background loader: cache-first, network fallback.
-    if (modelChanged || !block->loaded) {
+    if (modelChanged || !block->loaded || blendChanged) {
       block->loaded = false;
       block->loadFailed = false;  // fresh load queued below, back to loading UI
       block->modelLoading = true;

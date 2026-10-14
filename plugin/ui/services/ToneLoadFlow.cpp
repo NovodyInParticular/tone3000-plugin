@@ -43,8 +43,24 @@ void ToneLoadFlow::swapBlock(const std::string& blockId) {
 // at the remembered insert slot. The browser stays open either way, and the
 // landed block becomes the swap target: the next pick auditions another
 // tone in the same slot, so flipping through results never piles up blocks.
+void ToneLoadFlow::selectSecondIr(const std::string& blockId) {
+  connection_.requireConnection([this, blockId] {
+    pendingSwapId_.clear();
+    pendingInsertId_.clear();
+    pendingSecondIrId_ = blockId;
+    if (onShowBrowser) onShowBrowser(true);
+  });
+}
+
 void ToneLoadFlow::toneSelected(const Tone& tone) {
   const auto context = std::exchange(pickContext_, juce::var());
+  // A second-IR pick goes to the block's B and returns to its card.
+  if (const auto secondIrBlock = std::exchange(pendingSecondIrId_, {}); !secondIrBlock.empty()) {
+    if (tone.models.empty() || tone.isNam()) return;
+    chain_.setSecondIr(secondIrBlock, tone.toJson());
+    if (onShowBrowser) onShowBrowser(false);
+    return;
+  }
   if (tone.models.empty()) {
     DBG("Tone has no models");
     return;
@@ -73,6 +89,7 @@ void ToneLoadFlow::clearPendingTargets() {
   pendingSwapId_.clear();
   pendingInsertId_.clear();
   pickContext_ = juce::var();
+  pendingSecondIrId_.clear();
 }
 
 }  // namespace t3k::ui

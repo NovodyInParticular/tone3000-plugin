@@ -120,6 +120,9 @@ void BlockCard::buildHeader() {
   calibration_ = std::make_unique<Indicator>();
   addChildComponent(*calibration_);
 
+  addChildComponent(dual_);
+  dual_.onClick = [this] { setShowDual(!showDual_); };
+
   addAndMakeVisible(eqPill_);
   eqPill_.setInterceptsMouseClicks(false, true);
   eqPower_.onClick = [this] {
@@ -292,6 +295,13 @@ void BlockCard::syncFromBlock() {
     step_->refresh();
     step_->setVisible(step_->hasCursor());
   }
+  // 2×IR: cab / IR blocks only; armed while a second IR is blended in.
+  const bool irBlock = block_.dualIr.has_value();
+  dual_.setVisible(irBlock);
+  dual_.setArmed(irBlock && block_.dualIr->hasB);
+  dual_.setOpen(showDual_);
+  if (!irBlock && showDual_) setShowDual(false);
+  if (dualView_) dualView_->setBlock(block_);
   syncHeader();
   syncMeta();
   syncModelSelect();
@@ -439,7 +449,10 @@ juce::String BlockCard::tonePageUrl() const {
 // Views
 void BlockCard::setShowEq(bool show) {
   showEq_ = show;
-  if (show) showInfo_ = false;
+  if (show) {
+    showInfo_ = false;
+    showDual_ = false;
+  }
   if (show && !eqEditor_) {
     eqEditor_ = std::make_unique<BlockEqView>(services_, block_.blockId);
     eqEditor_->setBands(block_.params.eq.bands);
@@ -451,10 +464,26 @@ void BlockCard::setShowEq(bool show) {
   setBodyView();
 }
 
+void BlockCard::setShowDual(bool show) {
+  showDual_ = show;
+  if (show) {
+    showEq_ = false;
+    showInfo_ = false;
+    if (!dualView_) {
+      dualView_ = std::make_unique<DualIrView>(services_, block_.blockId);
+      body_.addAndMakeVisible(*dualView_);
+    }
+    dualView_->setBlock(block_);
+  }
+  dual_.setOpen(showDual_);
+  setBodyView();
+}
+
 void BlockCard::setShowInfo(bool show) {
   if (show == showInfo_) return;
   if (show) {
     showEq_ = false;
+    showDual_ = false;
     showInfo_ = true;
     if (authenticated() && (!infoTone_ || infoTone_->id != block_.tone.id)) fetchInfo(/*background=*/false);
   } else {
@@ -467,12 +496,13 @@ void BlockCard::setShowInfo(bool show) {
 void BlockCard::setBodyView() {
   const auto view = body();
   if (eqEditor_) eqEditor_->setVisible(view == Body::eq);
+  if (dualView_) dualView_->setVisible(view == Body::dual);
   for (auto* c : std::initializer_list<juce::Component*>{&inMeter_, &outMeter_, &in_, &out_, &mix_, &selectWrap_})
     c->setVisible(view == Body::tone);
   normalizeWrap_.setVisible(view == Body::tone && isNam() &&
                             services_.prefs.getBool(UiPrefs::kShowBlockNormalizeControl, false));
-  imageFrame_.setVisible(view != Body::eq);
-  meta_.setVisible(view != Body::eq);
+  imageFrame_.setVisible(view != Body::eq && view != Body::dual);
+  meta_.setVisible(view != Body::eq && view != Body::dual);
   syncHeader();
   syncMeta();
   setSize(kWidth, preferredHeight());
@@ -496,6 +526,7 @@ void BlockCard::resized() {
   body_.setBounds(bodyArea);
   const auto local = body_.getLocalBounds();
   if (eqEditor_) eqEditor_->setBounds(local);
+  if (dualView_) dualView_->setBounds(local);
   infoBusy_.setBounds(local);
   if (body() == Body::info)
     layoutInfoBody(local);
@@ -516,7 +547,11 @@ void BlockCard::layoutHeader(juce::Rectangle<int> header) {
     centreAt(*size_, x);
     x += size_->getWidth() + kHeaderGap;
   }
-  if (calibration_->isVisible()) centreAt(*calibration_, x);
+  if (calibration_->isVisible()) {
+    centreAt(*calibration_, x);
+    x += calibration_->getWidth() + kHeaderGap;
+  }
+  if (dual_.isVisible()) centreAt(dual_, x);
   if (step_) centreAt(*step_, row.getCentreX() - step_->getWidth() / 2);
 
   // Right cluster, laid right to left; EQ stays rightmost in its pill so

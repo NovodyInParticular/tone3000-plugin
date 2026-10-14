@@ -481,7 +481,15 @@ bool TONE3000Processor::swapTone(const std::string& blockId, const juce::String&
   block->activeModelId = parsed.firstModelId;
   block->modelLoading = true;
   block->loadFailed = false;
+  // The old tone's models go, except a dual IR's B: stepping cab A keeps the
+  // blend partner (and its bytes) in place.
+  std::vector<uint8_t> keepB;
+  if (block->irBModelId != 0)
+    if (auto it = block->modelCache.find(block->irBModelId); it != block->modelCache.end())
+      keepB = std::move(it->second);
   block->modelCache.clear();
+  if (!keepB.empty())
+    block->modelCache[block->irBModelId] = std::move(keepB);
 
   DBG("Swapped tone on block " << blockId << " -> tone " << parsed.toneId);
 
@@ -820,7 +828,9 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
     namSlimSize = block->namSlimSize;
   }
 
-  PreparedBlockModel prepared = prepareBlockModelOffThread(type, modelData, filename, namSlimSize);
+  juce::String blendUsed;
+  PreparedBlockModel prepared =
+      prepareBlockModelOffThread(type, withSecondIr(blockId, type, modelData, &blendUsed), filename, namSlimSize);
   const bool applied = prepared.success;
 
   // A swapped tone's previous engine may still be audibly processing; let
@@ -853,6 +863,7 @@ void TONE3000Processor::loadToneInBackground(const std::string& blockId, int fir
     }
 
     applyPreparedModelToChainBlock(*block, type, prepared, std::move(crossfadeShell));
+    requeueIfBlendStale(*block, type, blendUsed);
   }
   if (crossfadeArmed)
     finishCrossfade(blockId);
@@ -922,8 +933,9 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
   const juce::String filename =
       modelName + (blockTypeForPrepare == ChainBlockType::NAM ? ".nam" : ".wav");
 
-  PreparedBlockModel prepared =
-      prepareBlockModelOffThread(blockTypeForPrepare, modelData, filename, namSlimSize);
+  juce::String blendUsed;
+  PreparedBlockModel prepared = prepareBlockModelOffThread(
+      blockTypeForPrepare, withSecondIr(blockId, blockTypeForPrepare, modelData, &blendUsed), filename, namSlimSize);
   const bool applied = prepared.success;
 
   // The outgoing model keeps processing until this moment; fade it out on
@@ -960,6 +972,7 @@ void TONE3000Processor::switchModelInBackground(const std::string& blockId, int 
     }
 
     applyPreparedModelToChainBlock(*block, blockTypeForPrepare, prepared, std::move(crossfadeShell));
+    requeueIfBlendStale(*block, blockTypeForPrepare, blendUsed);
   }
   if (crossfadeArmed)
     finishCrossfade(blockId);
@@ -1005,6 +1018,7 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
     float inputGain = 0.5f, outputGain = 0.5f, mix = 1.0f;
     juce::var eq;
     juce::var browse;
+    juce::var dualIr;
     bool rtFailed = false;
   };
 
@@ -1073,6 +1087,29 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
         row.mix = block->mixNormalized;
         row.eq = block->eq.toVar();
         row.browse = block->browse;
+        if (block->type == ChainBlockType::IR) {
+          const auto p = block->irBlend.sanitized();
+          juce::DynamicObject::Ptr d = new juce::DynamicObject();
+          d->setProperty("blend", p.blend);
+          d->setProperty("levelA", p.levelADb);
+          d->setProperty("levelB", p.levelBDb);
+          d->setProperty("invertA", p.invertA);
+          d->setProperty("invertB", p.invertB);
+          d->setProperty("alignMs", p.alignMs);
+          if (block->irBModelId != 0) {
+            juce::DynamicObject::Ptr b = new juce::DynamicObject();
+            b->setProperty("id", block->irBToneVar["id"]);
+            b->setProperty("title", block->irBToneVar["title"]);
+            b->setProperty("local", block->irBToneVar["local"]);
+            b->setProperty("loaded", block->modelCache.count(block->irBModelId) != 0);
+            d->setProperty("b", juce::var(b.get()));
+          }
+          // A blend change (or B's download) is still on its way to the
+          // kernel: the UI shows it as busy.
+          d->setProperty("building", block->dualIrAppliedGeneration != block->dualIrGeneration ||
+                                         (block->irBModelId != 0 && block->modelCache.count(block->irBModelId) == 0));
+          row.dualIr = juce::var(d.get());
+        }
         out.push_back(std::move(row));
       }
     };
@@ -1154,6 +1191,8 @@ juce::var TONE3000Processor::getChainState(int knownRevision) const {
       item->setProperty("params", juce::var(params.get()));
       if (row.browse.isObject())
         item->setProperty("browse", row.browse);
+      if (row.dualIr.isObject())
+        item->setProperty("dualIr", row.dualIr);
 
       chainArray.add(juce::var(item.get()));
     }
