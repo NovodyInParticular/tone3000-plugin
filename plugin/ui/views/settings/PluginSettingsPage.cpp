@@ -2,6 +2,7 @@
 
 #include "InlineChrome.h"
 #include "core/Fonts.h"
+#include "core/Labels.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
 #include "widgets/TextField.h"
@@ -124,6 +125,13 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
                                 " icon on their block and it\xe2\x80\x99s enabled by default."))})),
       calibrationHandoff_("When one calibrated NAM feeds another, output calibration data also sets the handoff "
                           "level between them."),
+      inputCalEnabled_(services.backend, "inputCalEnabled"),
+      inputCalGain_(services.backend, "inputCalGain"),
+      inputCal_("Input Level Calibration",
+                "Play your hardest for a few seconds and the input is set so your loudest notes drive "
+                "captures at the level they were made at. Saved with this plugin instance."),
+      inputCalButton_("Calibrate", FormButton::cta()),
+      inputCalButtonBox_(inputCalButton_, static_cast<float>(inputCalButton_.preferredHeight())),
       oversampling_("Oversampling", "Reduces aliasing. Higher rates improve quality but use more CPU."),
       rateLabel_("Rate", form::kBodyPx, false, theme::kMuted),
       multiCore_("Multi-Core Processing",
@@ -182,6 +190,16 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
   calibrationHelp_.onLink = [](const juce::String& href) { juce::URL(href).launchInDefaultBrowser(); };
   calibration_.onChange = [this](bool on) { setAndRemember(calibrateParam_, on ? 1.0f : 0.0f); };
   add(calibration_);
+
+  // Input level calibration.
+  inputCal_.content().setGap(form::kControlGap);
+  inputCal_.content().add(inputCalStatus_);
+  inputCal_.content().add(inputCalButtonBox_);
+  inputCal_.onChange = [this](bool on) { inputCalEnabled_.set(on); };
+  inputCalButton_.onClick = [this] { startOrCancelInputCal(); };
+  inputCalEnabled_.onChange = [this] { syncInputCal(); };
+  inputCalGain_.onChange = [this] { syncInputCal(); };
+  add(inputCal_);
 
   // Oversampling.
   oversampling_.content().setGap(8);
@@ -243,11 +261,13 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
   services_.updates.addListener(this);
   syncPrefs();
   syncParams();
+  syncInputCal();
   syncFooter();
   chainChanged(services_.chain.state());
 }
 
 PluginSettingsPage::~PluginSettingsPage() {
+  if (inputCalListening_) services_.backend.cancelInputCalibration();
   services_.updates.removeListener(this);
   services_.chain.removeListener(this);
   services_.prefs.removeListener(this);
@@ -296,6 +316,69 @@ void PluginSettingsPage::syncParams() {
   oversampling_.setExpanded(os);
   if (auto* p = services_.backend.parameter("osFactor"))
     osRate_.setValue(juce::String(juce::roundToInt(p->convertFrom0to1(osFactorParam_.normalised()))));
+}
+
+class PluginSettingsPage::InputCalPoller : public juce::Timer {
+public:
+  explicit InputCalPoller(std::function<void()> tick) : tick_(std::move(tick)) {}
+  void timerCallback() override { tick_(); }
+
+private:
+  std::function<void()> tick_;
+};
+
+void PluginSettingsPage::startOrCancelInputCal() {
+  if (inputCalListening_) {
+    services_.backend.cancelInputCalibration();
+    inputCalListening_ = false;
+    inputCalResult_ = "Calibration cancelled.";
+  } else {
+    services_.backend.startInputCalibration();
+    inputCalListening_ = true;
+    inputCalResult_ = {};
+    if (inputCalPoller_ == nullptr) inputCalPoller_ = std::make_unique<InputCalPoller>([this] { pollInputCal(); });
+    inputCalPoller_->startTimer(100);
+  }
+  syncInputCal();
+}
+
+void PluginSettingsPage::pollInputCal() {
+  const juce::var r = services_.backend.pollInputCalibration();
+  const juce::String state = r["state"].toString();
+  if (state == "listening") {
+    const int pct = juce::roundToInt(static_cast<double>(r["progress"]) * 100.0);
+    inputCalResult_ = "Listening: play your hardest... " + juce::String(pct) + " %  (peak " +
+                      labels::toFixed(static_cast<double>(r["peakDb"]), 1) + " dBFS)";
+  } else {
+    inputCalListening_ = false;
+    if (inputCalPoller_ != nullptr) inputCalPoller_->stopTimer();
+    if (state == "done")
+      inputCalResult_ = {};
+    else if (state == "timeout")
+      inputCalResult_ = "No signal heard. Check your input and try again.";
+  }
+  syncInputCal();
+}
+
+void PluginSettingsPage::syncInputCal() {
+  const bool on = inputCalEnabled_.boolValue();
+  inputCal_.setValue(on);
+  inputCal_.setExpanded(true);  // the Calibrate button stays reachable while off
+  inputCalButton_.setLabel(inputCalListening_ ? "Cancel" : "Calibrate");
+
+  juce::String status = inputCalResult_;
+  if (status.isEmpty()) {
+    const juce::var r = services_.backend.pollInputCalibration();
+    // inputCalGain is a linear ±24 dB map (Processor.cpp).
+    const double db = -24.0 + 48.0 * inputCalGain_.normalised();
+    const juce::String gain = (db > 0.05 ? "+" : "") + labels::toFixed(db, 1) + " dB";
+    if (r.hasProperty("measuredDb"))
+      status = "Measured peak " + labels::toFixed(static_cast<double>(r["measuredDb"]), 1) + " dBFS. Input gain " +
+               gain + (on ? " (applied)." : " (off).");
+    else
+      status = "Not calibrated yet. Input gain " + gain + (on ? " (applied)." : " (off).");
+  }
+  inputCalStatus_.setText(status);
 }
 
 void PluginSettingsPage::chainChanged(const ChainState& state) {

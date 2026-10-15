@@ -327,6 +327,7 @@ target_sources(${PROJECT_NAME}
         include/Spread.h
         src/Spread.cpp
         include/TimeFx.h
+        include/InputCalibration.h
         src/TimeFx.cpp
         include/StereoOffset.h
         src/StereoOffset.cpp

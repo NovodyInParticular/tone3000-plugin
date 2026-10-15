@@ -113,6 +113,9 @@ public:
   void startAutoOffset() override;
   void cancelAutoOffset() override;
   juce::var pollAutoOffset() override;
+  void startInputCalibration() override;
+  void cancelInputCalibration() override;
+  juce::var pollInputCalibration() override;
 
   juce::String pluginVersion() override;
   juce::String uniqueDeviceId() override;

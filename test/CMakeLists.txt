@@ -22,6 +22,7 @@ target_sources(DspTests PRIVATE
     src/tone_step_tests.cpp
     src/dual_ir_tests.cpp
     src/time_fx_tests.cpp
+    src/input_calibration_tests.cpp
     src/branch_tests.cpp
     src/clipboard_tests.cpp
     src/dsp_tests.cpp

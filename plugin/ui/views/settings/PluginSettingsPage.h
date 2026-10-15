@@ -62,6 +62,21 @@ private:
   Paragraph calibrationHelp_;
   TipRow calibrationTip_;
   Paragraph calibrationHandoff_;
+  // Guided input level calibration ("play your hardest"): the toggle
+  // applies the measured gain; Calibrate (re)measures. Polls the processor
+  // while listening.
+  class InputCalPoller;
+  ParamBinding inputCalEnabled_, inputCalGain_;
+  ToggleRow inputCal_;
+  Paragraph inputCalStatus_;
+  FormButton inputCalButton_;
+  FormBox inputCalButtonBox_;
+  std::unique_ptr<InputCalPoller> inputCalPoller_;
+  bool inputCalListening_ = false;
+  juce::String inputCalResult_;
+  void startOrCancelInputCal();
+  void pollInputCal();
+  void syncInputCal();
   ToggleRow oversampling_;
   FormLabel rateLabel_;
   SelectField osRate_{"Oversampling rate"};

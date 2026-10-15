@@ -134,6 +134,10 @@ public:
   virtual void startAutoOffset() = 0;
   virtual void cancelAutoOffset() = 0;
   virtual juce::var pollAutoOffset() = 0;
+  // Guided input level calibration (see plugin/include/InputCalibration.h).
+  virtual void startInputCalibration() = 0;
+  virtual void cancelInputCalibration() = 0;
+  virtual juce::var pollInputCalibration() = 0;
 
   // Misc
   virtual juce::String pluginVersion() = 0;

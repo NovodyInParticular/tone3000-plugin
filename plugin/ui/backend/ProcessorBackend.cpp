@@ -234,6 +234,9 @@ juce::var ProcessorBackend::pollAutoBalance() { return processor_.pollAutoBalanc
 void ProcessorBackend::startAutoOffset() { processor_.startAutoOffset(); }
 void ProcessorBackend::cancelAutoOffset() { processor_.cancelAutoOffset(); }
 juce::var ProcessorBackend::pollAutoOffset() { return processor_.pollAutoOffset(); }
+void ProcessorBackend::startInputCalibration() { processor_.startInputCalibration(); }
+void ProcessorBackend::cancelInputCalibration() { processor_.cancelInputCalibration(); }
+juce::var ProcessorBackend::pollInputCalibration() { return processor_.pollInputCalibration(); }
 
 // Misc
 juce::String ProcessorBackend::pluginVersion() { return JucePlugin_VersionString; }

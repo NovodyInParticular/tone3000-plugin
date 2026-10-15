@@ -129,6 +129,11 @@ public:
   void startAutoOffset() override {}
   void cancelAutoOffset() override {}
   juce::var pollAutoOffset() override { return autoMeasure_; }
+  void startInputCalibration() override {}
+  void cancelInputCalibration() override {}
+  juce::var pollInputCalibration() override { return inputCalibration_; }
+  // What pollInputCalibration reports (scenarios seed it).
+  juce::var inputCalibration_;
 
   juce::String pluginVersion() override { return version_; }
   juce::String uniqueDeviceId() override { return "testbed-device"; }

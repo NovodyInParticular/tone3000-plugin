@@ -188,6 +188,8 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.fxModDepth = get("fxModDepth");
   paramRefs.fxModMix = get("fxModMix");
   paramRefs.fxOrder = get("fxOrder");
+  paramRefs.inputCalEnabled = get("inputCalEnabled");
+  paramRefs.inputCalGain = get("inputCalGain");
 }
 
 // The time-FX rack's settings, decoded from the parameter atomics. Safe on
@@ -472,6 +474,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(normParam("fxModMix", 61, 0.5f));
   layout.add(std::make_unique<juce::AudioParameterChoice>(
       juce::ParameterID{"fxOrder", 62}, "fxOrder", orders, 0));
+
+  // Guided input level calibration (see InputCalibration.h): the measured
+  // gain and whether it applies. Off by default; per instance, so it saves
+  // with the session but stays out of presets (it describes the player's
+  // interface, not the tone).
+  layout.add(boolParam("inputCalEnabled", 63, false));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"inputCalGain", 64}, "inputCalGain",
+      juce::NormalisableRange<float>(-InputCalibration::kMaxGainDb, InputCalibration::kMaxGainDb, 0.01f), 0.0f,
+      juce::AudioParameterFloatAttributes().withLabel("dB")));
 
   return layout;
 }
@@ -1285,6 +1297,9 @@ void TONE3000Processor::updateCachedParameters() {
       PitchShift::windowFromIndex(static_cast<int>(std::lround(paramRefs.pitchWindow->load())));
 
   cacheTimeFx = timeFxParamsFromRefs();
+  cacheInputCalGain = paramRefs.inputCalEnabled->load() > 0.5f
+                          ? juce::Decibels::decibelsToGain(paramRefs.inputCalGain->load())
+                          : 1.0f;
 }
 
 // The outgoing half of a swap crossfade: the retiring model's own wet path
@@ -2030,8 +2045,9 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     } else {
       peakR = peakL;
     }
-    inputMeterLevelL.store(peakToDb(peakL * inputGain));
-    inputMeterLevelR.store(peakToDb(peakR * inputGain));
+    // The calibration gain counts too: the meter shows what drives the chain.
+    inputMeterLevelL.store(peakToDb(peakL * inputGain * cacheInputCalGain));
+    inputMeterLevelR.store(peakToDb(peakR * inputGain * cacheInputCalGain));
   }
 
   // Feed the tuner from the raw input (pre-gain, pre-gate) while the tuner
@@ -2043,6 +2059,15 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // Apply the input gain (vectorized).
   for (int ch = 0; ch < numChannels; ++ch)
     buffer.applyGain(ch, 0, numSamples, inputGain);
+
+  // Input calibration: a running measurement hears the signal after the
+  // Input knob (so the result accounts for it) and before the calibration
+  // gain; the gain then applies when enabled.
+  inputCalibration.push(buffer.getReadPointer(0), numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
+                        numSamples);
+  if (cacheInputCalGain != 1.0f)
+    for (int ch = 0; ch < numChannels; ++ch)
+      buffer.applyGain(ch, 0, numSamples, cacheInputCalGain);
 
   // Noise gate, post input gain so the threshold knob's dB meaning matches
   // the level heading into the chain. Envelope/hysteresis gate (NoiseGate.h);
@@ -2387,6 +2412,55 @@ void TONE3000Processor::runAutoBalanceStage(const juce::AudioBuffer<float>& buff
 // Message thread (UI poll). Applying the result here, not on the audio
 // thread, keeps setValueNotifyingHost off the RT path and on the thread
 // hosts expect parameter gestures from.
+void TONE3000Processor::startInputCalibration() {
+  inputCalibration.arm(hostSampleRate);
+  juce::Logger::writeToLog("[InputCal] Listening");
+}
+
+void TONE3000Processor::cancelInputCalibration() { inputCalibration.cancel(); }
+
+juce::var TONE3000Processor::pollInputCalibration() {
+  juce::DynamicObject::Ptr obj = new juce::DynamicObject();
+  switch (inputCalibration.state()) {
+    case InputCalibration::State::listening:
+      obj->setProperty("state", "listening");
+      obj->setProperty("progress", inputCalibration.progress());
+      obj->setProperty("peakDb", inputCalibration.peakDb());
+      break;
+    case InputCalibration::State::measured: {
+      const float peak = inputCalibration.peakDb();
+      const float gain = InputCalibration::suggestedGainDb(peak);
+      inputCalibration.acknowledge();
+      inputCalMeasuredDb.store(peak);
+      for (const auto& [id, value] : {std::pair<const char*, float>{"inputCalGain", gain},
+                                      std::pair<const char*, float>{"inputCalEnabled", 1.0f}}) {
+        if (auto* param = parameters.getParameter(id)) {
+          param->beginChangeGesture();
+          param->setValueNotifyingHost(param->convertTo0to1(value));
+          param->endChangeGesture();
+        }
+      }
+      obj->setProperty("state", "done");
+      obj->setProperty("peakDb", peak);
+      obj->setProperty("gainDb", gain);
+      juce::Logger::writeToLog("[InputCal] Peak " + juce::String(peak, 1) + " dBFS -> " +
+                               juce::String(gain, 1) + " dB");
+      break;
+    }
+    case InputCalibration::State::timedOut:
+      inputCalibration.acknowledge();
+      obj->setProperty("state", "timeout");
+      break;
+    case InputCalibration::State::idle:
+      obj->setProperty("state", "idle");
+      break;
+  }
+  const float measured = inputCalMeasuredDb.load();
+  if (std::isfinite(measured))
+    obj->setProperty("measuredDb", measured);
+  return obj.get();
+}
+
 juce::var TONE3000Processor::pollAutoBalance() {
   juce::DynamicObject::Ptr obj = new juce::DynamicObject();
   const auto state =

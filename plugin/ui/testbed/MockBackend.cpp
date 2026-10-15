@@ -54,6 +54,7 @@ constexpr SliderDefault kSliders[] = {
     {"fxReverbSize", 0.5f},      {"fxReverbDecay", 0.5617f}, {"fxReverbDamping", 0.4f},
     {"fxReverbMix", 0.25f},      {"fxModRate", 0.5233f},   {"fxModDepth", 0.5f},
     {"fxModMix", 0.5f},          {"fxOrder", 0.0f},
+    {"inputCalGain", 0.5f},  // 0 dB on the ±24 dB map
 };
 struct ToggleDefault {
   const char* id;
@@ -73,6 +74,7 @@ constexpr ToggleDefault kToggles[] = {
     {"fxDelayEnabled", false},         {"fxDelaySync", false},
     {"fxDelayPingPong", false},        {"fxReverbEnabled", false},
     {"fxModEnabled", false},           {"fxModType", false},
+    {"inputCalEnabled", false},
 };
 
 }  // namespace

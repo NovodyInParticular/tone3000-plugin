@@ -5,6 +5,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <array>
 #include <atomic>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -28,6 +29,7 @@
 #include "Spread.h"
 #include "StereoOffset.h"
 #include "TimeFx.h"
+#include "InputCalibration.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
 #include <mutex>
@@ -520,6 +522,8 @@ public:
   // temp dir so preset/program behavior can be driven without touching the
   // user's shared preset folder; see PresetManager's baseDir constructor).
   // Message thread only, before any preset call.
+  // The ids a preset carries (tests check what stays out).
+  static const std::vector<juce::String>& presetParameterIdsForTesting() { return presetParameterIds(); }
   void setPresetStoreForTesting(const juce::File& baseDir) {
     presetManager = PresetManager(baseDir);
     hostProgramInfoCache.clear();
@@ -554,6 +558,15 @@ public:
   void startAutoOffset();
   void cancelAutoOffset();
   juce::var pollAutoOffset();  // { state: "idle"|"listening"|"done"|"timeout", matchedMs?, polarityFlipped?, progress? }
+
+  // Input calibration: "play your hardest for a few seconds". Done sets
+  // inputCalGain to bring the measured peak to the capture level and
+  // switches inputCalEnabled on (host gestures, so automation and undo see
+  // them).
+  void startInputCalibration();
+  void cancelInputCalibration();
+  // { state: "idle"|"listening"|"done"|"timeout", progress?, peakDb?, gainDb?, measuredDb? }
+  juce::var pollInputCalibration();
 
   // Location of the on-disk diagnostic log. Single source of truth shared by the
   // FileLogger setup and the UI's "copy/reveal logs" actions so they never drift.
@@ -1273,6 +1286,8 @@ private:
     std::atomic<float>* fxModDepth = nullptr;
     std::atomic<float>* fxModMix = nullptr;
     std::atomic<float>* fxOrder = nullptr;
+    std::atomic<float>* inputCalEnabled = nullptr;
+    std::atomic<float>* inputCalGain = nullptr;
   } paramRefs;
   timefx::Params timeFxParamsFromRefs() const;
   void resolveParamRefs();
@@ -1353,6 +1368,12 @@ private:
   bool cachePitchEnabled = false;
   PitchShift::Params cachePitch;
   timefx::Params cacheTimeFx;
+  float cacheInputCalGain = 1.0f;  // linear; 1 while calibration is off
+
+  // Guided input calibration (see InputCalibration.h). The last measured
+  // peak (dBFS, NaN when never measured) is per instance session state.
+  InputCalibration inputCalibration;
+  std::atomic<float> inputCalMeasuredDb{std::numeric_limits<float>::quiet_NaN()};
 
   // Time effects after the tone stack (see TimeFx.h). Host tempo from the
   // last callback, for the tail report.
