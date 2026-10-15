@@ -329,6 +329,9 @@ target_sources(${PROJECT_NAME}
         include/TimeFx.h
         include/InputCalibration.h
         src/TimeFx.cpp
+        include/RigShare.h
+        src/RigShare.cpp
+        src/ProcessorRig.cpp
         include/StereoOffset.h
         src/StereoOffset.cpp
         include/AutoOffset.h

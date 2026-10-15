@@ -28,6 +28,7 @@
 #include "UpdateCheck.h"
 #include "Zoom.h"
 #include "LiteAdvisor.h"
+#include "RigTransfer.h"
 #include "backend/Backend.h"
 
 namespace t3k::ui {
@@ -67,7 +68,8 @@ public:
         loadFlow(chain, connection, t),
         stepper(b, chain, t, connection, toast),
         updates(t, prefs, b.pluginVersion(), updateNotice),
-        lite(chain, &meters) {
+        lite(chain, &meters),
+        rigs(b, t, chain, prefs) {
     loadFlow.onToneLanded = [this](const std::string& id) {
       stepper.setFocusBlock(id);
       stepper.prefetchAround(id);
@@ -98,6 +100,7 @@ public:
   ToneStepper stepper;
   UpdateCheck updates;
   LiteAdvisor lite;
+  RigTransfer rigs;
   Zoom zoom;
   Pointer pointer;
 };

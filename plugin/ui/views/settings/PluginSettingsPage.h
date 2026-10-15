@@ -85,6 +85,13 @@ private:
   FieldRow midi_;
   MidiMapSection midiSection_;
 
+  // Rig sharing: code to / from the clipboard, rig files.
+  FieldRow rigs_;
+  FormButton copyRigCode_, pasteRigCode_, saveRigFile_, openRigFile_;
+  FormBox copyRigCodeBox_, pasteRigCodeBox_, saveRigFileBox_, openRigFileBox_;
+  Paragraph rigStatus_;
+  void showRigStatus(const juce::String& message);
+
   FieldRow presets_;
   FormButton openPresets_;
   FormBox openPresetsBox_;

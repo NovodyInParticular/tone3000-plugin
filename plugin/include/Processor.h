@@ -30,6 +30,8 @@
 #include "StereoOffset.h"
 #include "TimeFx.h"
 #include "InputCalibration.h"
+#include "RigShare.h"
+#include <set>
 #include "PresetManager.h"
 #include "TunerDetector.h"
 #include <mutex>
@@ -558,6 +560,22 @@ public:
   void startAutoOffset();
   void cancelAutoOffset();
   juce::var pollAutoOffset();  // { state: "idle"|"listening"|"done"|"timeout", matchedMs?, polarityFlipped?, progress? }
+
+  // Rig sharing (RigShare.h). exportRig: { text, missing[], embedded[] }
+  // (a file embeds local captures within the size cap; a code never does).
+  // inspectRig: { ok, error?, name, skin, toneIds[], missing[] } so the UI
+  // can resolve the library tones; applyRig takes the rig text plus
+  // { "<toneId>": toneJson } from that resolution and replaces the rig like
+  // a preset: { ok, error?, name, skin, missing[] }.
+  juce::var exportRig(const juce::String& name, const juce::String& skin, bool asCode);
+  juce::var inspectRig(const juce::String& text);
+  juce::var applyRig(const juce::String& text, const juce::var& resolvedTones);
+  rigshare::Rig captureRig(const juce::String& name, const juce::String& skin, bool embedLocals) const;
+  // Validates and stashes one embedded local file like a dropped one; the
+  // model object for its synthetic tone, or void with `error` set.
+  static juce::var stashLocalModelBytes(const juce::String& fileName, const juce::MemoryBlock& bytes,
+                                        juce::String& error);
+  static constexpr size_t kMaxLocalFileBytesForRig = 12u * 1024u * 1024u;
 
   // Input calibration: "play your hardest for a few seconds". Done sets
   // inputCalGain to bring the measured peak to the capture level and

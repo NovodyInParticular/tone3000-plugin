@@ -518,6 +518,17 @@ juce::var TONE3000Processor::loadLocalToneUrls(const juce::Array<juce::URL>& sou
   return finishLocalToneLoad(title, models, firstError, picked.size(), targetInsertId);
 }
 
+juce::var TONE3000Processor::stashLocalModelBytes(const juce::String& fileName, const juce::MemoryBlock& bytes,
+                                                  juce::String& error) {
+  if (bytes.getSize() == 0 || bytes.getSize() > kMaxLocalFileBytesForRig) {
+    error = "File too large";
+    return {};
+  }
+  juce::MemoryOutputStream decoded;
+  decoded.write(bytes.getData(), bytes.getSize());
+  return stashLocalBytes(fileName, decoded, error);
+}
+
 juce::var TONE3000Processor::finishLocalToneLoad(const juce::String& title,
                                                  const juce::Array<juce::var>& stashedModels,
                                                  const juce::String& firstError, int fileCount,

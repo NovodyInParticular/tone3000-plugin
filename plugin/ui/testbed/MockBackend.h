@@ -132,6 +132,9 @@ public:
   void startInputCalibration() override {}
   void cancelInputCalibration() override {}
   juce::var pollInputCalibration() override { return inputCalibration_; }
+  juce::var exportRig(const juce::String&, const juce::String&, bool) override { return {}; }
+  juce::var inspectRig(const juce::String&) override { return {}; }
+  juce::var applyRig(const juce::String&, const juce::var&) override { return {}; }
   // What pollInputCalibration reports (scenarios seed it).
   juce::var inputCalibration_;
 

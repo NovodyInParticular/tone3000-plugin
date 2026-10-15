@@ -138,6 +138,10 @@ public:
   virtual void startInputCalibration() = 0;
   virtual void cancelInputCalibration() = 0;
   virtual juce::var pollInputCalibration() = 0;
+  // Rig sharing (plugin/include/RigShare.h).
+  virtual juce::var exportRig(const juce::String& name, const juce::String& skin, bool asCode) = 0;
+  virtual juce::var inspectRig(const juce::String& text) = 0;
+  virtual juce::var applyRig(const juce::String& text, const juce::var& resolvedTones) = 0;
 
   // Misc
   virtual juce::String pluginVersion() = 0;

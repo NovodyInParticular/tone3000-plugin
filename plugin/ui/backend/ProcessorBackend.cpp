@@ -237,6 +237,13 @@ juce::var ProcessorBackend::pollAutoOffset() { return processor_.pollAutoOffset(
 void ProcessorBackend::startInputCalibration() { processor_.startInputCalibration(); }
 void ProcessorBackend::cancelInputCalibration() { processor_.cancelInputCalibration(); }
 juce::var ProcessorBackend::pollInputCalibration() { return processor_.pollInputCalibration(); }
+juce::var ProcessorBackend::exportRig(const juce::String& name, const juce::String& skin, bool asCode) {
+  return processor_.exportRig(name, skin, asCode);
+}
+juce::var ProcessorBackend::inspectRig(const juce::String& text) { return processor_.inspectRig(text); }
+juce::var ProcessorBackend::applyRig(const juce::String& text, const juce::var& resolvedTones) {
+  return processor_.applyRig(text, resolvedTones);
+}
 
 // Misc
 juce::String ProcessorBackend::pluginVersion() { return JucePlugin_VersionString; }

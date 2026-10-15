@@ -140,6 +140,18 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       midi_("MIDI Mapping",
             "Control the plugin from pedals and knobs. Mappings are saved with the plugin and work in your DAW too."),
       midiSection_(services),
+      rigs_("Rig Sharing",
+            "Share your whole rig (tones, settings, effects and skin) as a short code to paste in a chat or "
+            "forum, or as a file. Local files can only travel inside a rig file."),
+      copyRigCode_("Copy rig code", FormButton::outlined()),
+      pasteRigCode_("Load rig code from clipboard", FormButton::outlined()),
+      saveRigFile_("Save rig file...", FormButton::outlined()),
+      openRigFile_("Open rig file...", FormButton::outlined()),
+      copyRigCodeBox_(copyRigCode_, static_cast<float>(copyRigCode_.preferredHeight())),
+      pasteRigCodeBox_(pasteRigCode_, static_cast<float>(pasteRigCode_.preferredHeight())),
+      saveRigFileBox_(saveRigFile_, static_cast<float>(saveRigFile_.preferredHeight())),
+      openRigFileBox_(openRigFile_, static_cast<float>(openRigFile_.preferredHeight())),
+      rigStatus_(juce::String(), form::kSmallPx),
       presets_("Presets",
                "Your saved presets are files in a folder you can back up, share, or copy to another computer."),
       openPresets_("Open presets folder", FormButton::text(form::kBodyPx, false, theme::kLinkBlue)),
@@ -221,6 +233,23 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
   midi_.setInlineLabel();
   midi_.content().add(midiSection_);
   add(midi_);
+
+  // Rig sharing.
+  rigs_.setInlineLabel();
+  rigs_.content().setGap(form::kControlGap);
+  for (auto* box : {&copyRigCodeBox_, &pasteRigCodeBox_, &saveRigFileBox_, &openRigFileBox_})
+    rigs_.content().add(*box);
+  rigs_.content().add(rigStatus_);
+  rigStatus_.setVisible(false);
+  const auto report = [this](RigTransfer::Outcome o) { showRigStatus(o.message); };
+  copyRigCode_.onClick = [this] { showRigStatus(services_.rigs.copyCode().message); };
+  pasteRigCode_.onClick = [this, report] {
+    showRigStatus("Loading rig...");
+    services_.rigs.importText(juce::SystemClipboard::getTextFromClipboard(), report);
+  };
+  saveRigFile_.onClick = [this, report] { services_.rigs.saveFile(report); };
+  openRigFile_.onClick = [this, report] { services_.rigs.importFile(report); };
+  add(rigs_);
 
   // Presets: a link to the folder the files live in. Hidden where there is
   // no file browser to open (iOS).
@@ -379,6 +408,11 @@ void PluginSettingsPage::syncInputCal() {
       status = "Not calibrated yet. Input gain " + gain + (on ? " (applied)." : " (off).");
   }
   inputCalStatus_.setText(status);
+}
+
+void PluginSettingsPage::showRigStatus(const juce::String& message) {
+  rigStatus_.setText(message);
+  rigs_.content().setShown(rigStatus_, message.isNotEmpty());
 }
 
 void PluginSettingsPage::chainChanged(const ChainState& state) {

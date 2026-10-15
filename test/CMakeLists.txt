@@ -23,6 +23,7 @@ target_sources(DspTests PRIVATE
     src/dual_ir_tests.cpp
     src/time_fx_tests.cpp
     src/input_calibration_tests.cpp
+    src/rig_share_tests.cpp
     src/branch_tests.cpp
     src/clipboard_tests.cpp
     src/dsp_tests.cpp
@@ -71,6 +72,8 @@ target_sources(DspTests PRIVATE
     ../plugin/src/ProcessorState.cpp
     ../plugin/src/Spread.cpp
     ../plugin/src/TimeFx.cpp
+    ../plugin/src/RigShare.cpp
+    ../plugin/src/ProcessorRig.cpp
     # Processor.cpp's constructor calls StandaloneStateAutosave::install().
     # Always the portable no-op stub here, never the .mm: the real observer
     # is iOS-standalone-only and this suite never runs there (the stub is

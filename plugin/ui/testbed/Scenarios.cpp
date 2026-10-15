@@ -518,6 +518,11 @@ const std::map<juce::String, Drive>& drives() {
            click(root, *picker);
          wait(400);
        }},
+      {"settings-rigs",
+       [](PluginRoot& root, MockBackend&) {
+         openSettings(root);
+         scrollSettingsTo(root, "Rig Sharing");
+       }},
       {"settings-presets",
        [](PluginRoot& root, MockBackend&) {
          openSettings(root);

@@ -116,6 +116,9 @@ public:
   void startInputCalibration() override;
   void cancelInputCalibration() override;
   juce::var pollInputCalibration() override;
+  juce::var exportRig(const juce::String& name, const juce::String& skin, bool asCode) override;
+  juce::var inspectRig(const juce::String& text) override;
+  juce::var applyRig(const juce::String& text, const juce::var& resolvedTones) override;
 
   juce::String pluginVersion() override;
   juce::String uniqueDeviceId() override;
