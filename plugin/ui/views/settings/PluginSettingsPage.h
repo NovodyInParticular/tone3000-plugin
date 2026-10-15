@@ -50,6 +50,8 @@ private:
   SelectField skinSelect_{"Skin"};
   FormButton openSkins_;
   FormBox openSkinsBox_;
+  FormLabel spectrumLabel_;
+  SelectField spectrumRate_{"Rig view analyser"};
 
   ToggleRow infoBar_;
   // View-only toggles for the faceplate's gate / pitch groups; the

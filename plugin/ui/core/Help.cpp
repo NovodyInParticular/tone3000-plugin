@@ -87,6 +87,8 @@ std::map<Key, String> buildTable() {
       knobDesktop("Tonality", "highs above this stay put, 1-20 kHz. Keeps pick attack bright; Off: pure shift.");
   t[Key::pitchWindow] = knobDesktop(
       "Buffer", "shifter delay buffer, 20-60 ms. Short: less latency · long: cleaner, more latency.");
+  t[Key::chainViewGallery] = U("Gallery: the chain as tone artwork. Add, swap, reorder.");
+  t[Key::chainViewRig] = U("Rig: the chain as gear, with the output spectrum. Click a module to open it.");
   t[Key::fxGroup] = U("Time FX: modulation, delay and reverb after the cab. Right-click: open the rack.");
   t[Key::fxDeck] = U("Time FX Rack: open the modulation, delay and reverb controls.");
   t[Key::fxOrder] = U("Order: the order the three effects run in. Click: next order.");

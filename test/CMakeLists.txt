@@ -24,6 +24,7 @@ target_sources(DspTests PRIVATE
     src/time_fx_tests.cpp
     src/input_calibration_tests.cpp
     src/rig_share_tests.cpp
+    src/output_spectrum_tests.cpp
     src/branch_tests.cpp
     src/clipboard_tests.cpp
     src/dsp_tests.cpp

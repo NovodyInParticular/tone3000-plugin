@@ -1396,6 +1396,14 @@ private:
   // Time effects after the tone stack (see TimeFx.h). Host tempo from the
   // last callback, for the tail report.
   timefx::Rack timeFx;
+  // The plugin's output for the rig view's analyser, addressed through the
+  // block spectrum API as kOutputSpectrumId.
+  BlockSpectrum outputSpectrum;
+
+public:
+  static constexpr const char* kOutputSpectrumId = "output";
+
+private:
   std::atomic<double> hostBpm{0.0};
 
   void updateEqCoefficients();

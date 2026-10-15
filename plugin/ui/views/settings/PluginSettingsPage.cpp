@@ -91,6 +91,7 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
                     "folder (see SKINS.md)."),
       openSkins_("Open skins folder", FormButton::text(form::kBodyPx, false, theme::kLinkBlue)),
       openSkinsBox_(openSkins_, static_cast<float>(openSkins_.preferredHeight())),
+      spectrumLabel_("Rig view analyser", form::kBodyPx, false, theme::kMuted),
       infoBar_("Show Info Bar",
                "Shows help text on hover explaining what elements do, plus keyboard shortcuts and a CPU meter."),
       showGate_("Show Gate", "Reduces unwanted noise like hum and hiss while you're playing."),
@@ -186,6 +187,13 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
     skinSelect_.onChange = [this](const juce::String& id) { services_.prefs.set(UiPrefs::kSkin, id); };
     skin_.content().setGap(form::kControlGap);
     skin_.content().add(skinSelect_);
+    skin_.content().add(spectrumLabel_);
+    skin_.content().add(spectrumRate_);
+    spectrumRate_.setOptions({{"normal", "Normal (30 fps)", {}},
+                              {"low", "Low refresh (8 fps, less CPU)", {}},
+                              {"off", "Off", {}}});
+    spectrumRate_.setValue(services_.prefs.get(UiPrefs::kSpectrumRate, "normal"));
+    spectrumRate_.onChange = [this](const juce::String& v) { services_.prefs.set(UiPrefs::kSpectrumRate, v); };
     skin_.content().add(openSkinsBox_);
     openSkins_.onClick = [] {
       const auto dir = skin::userSkinsDir();

@@ -14,6 +14,8 @@
 
 #include "block/BlockDetail.h"
 #include "gallery/ChainView.h"
+#include "rig/RigView.h"
+#include "widgets/ChromeTextButton.h"
 #include "services/Services.h"
 
 namespace t3k::ui {
@@ -39,10 +41,16 @@ public:
 private:
   void openDetail(const std::string& blockId);
   void closeDetail();
+  // Gallery or rig view (UiPrefs::kChainView, machine-wide).
+  void setRigView(bool rig);
+  bool rigView() const { return rig_ != nullptr; }
 
   Services& services_;
   ChainView gallery_;
   std::unique_ptr<BlockDetail> detail_;
+  std::unique_ptr<RigView> rig_;
+  ChromeTextButton galleryButton_{"GALLERY", help::Key::chainViewGallery};
+  ChromeTextButton rigButton_{"RIG", help::Key::chainViewRig};
 };
 
 }  // namespace t3k::ui

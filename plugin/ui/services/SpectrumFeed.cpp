@@ -4,8 +4,8 @@
 
 namespace t3k::ui {
 
-SpectrumFeed::SpectrumFeed(Backend& backend, UiClock& clock, std::string blockId)
-    : backend_(backend), clock_(clock), blockId_(std::move(blockId)) {
+SpectrumFeed::SpectrumFeed(Backend& backend, UiClock& clock, std::string blockId, int minIntervalMs)
+    : backend_(backend), clock_(clock), blockId_(std::move(blockId)), minIntervalMs_(minIntervalMs) {
   backend_.setBlockSpectrumEnabled(blockId_, true);
   tick();
   clock_.addListener(this);
@@ -17,6 +17,11 @@ SpectrumFeed::~SpectrumFeed() {
 }
 
 void SpectrumFeed::tick() {
+  if (minIntervalMs_ > 0) {
+    const auto now = juce::Time::getMillisecondCounter();
+    if (now - lastPollMs_ < static_cast<juce::uint32>(minIntervalMs_)) return;
+    lastPollMs_ = now;
+  }
   const auto res = backend_.getBlockSpectrum(blockId_);
   const auto* arr = res.getArray();
   if (arr == nullptr) return;

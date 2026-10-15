@@ -1717,6 +1717,10 @@ bool TONE3000Processor::resetBlockEq(const std::string& blockId) {
 }
 
 bool TONE3000Processor::setBlockSpectrumEnabled(const std::string& blockId, bool enabled) {
+  if (blockId == kOutputSpectrumId) {
+    outputSpectrum.setEnabled(enabled);
+    return true;
+  }
   juce::ScopedLock lock(chainMutex);
   ChainBlock* block = findBlockById(blockId);
   if (block == nullptr || block->type == ChainBlockType::INSERT)
@@ -1729,6 +1733,8 @@ bool TONE3000Processor::setBlockSpectrumEnabled(const std::string& blockId, bool
 juce::var TONE3000Processor::getBlockSpectrum(const std::string& blockId) {
   // getSpectrum does the FFT on this (message) thread over a lock-free ring,
   // so the chain lock is only held for the block lookup + analysis.
+  if (blockId == kOutputSpectrumId)
+    return outputSpectrum.getSpectrum();  // its own ring; no chain lock
   juce::ScopedLock lock(chainMutex);
   ChainBlock* block = findBlockById(blockId);
   if (block == nullptr || block->type == ChainBlockType::INSERT)

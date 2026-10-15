@@ -21,6 +21,7 @@ enum class Key {
   alignOffset, alignWobble, alignWobblePower, alignCrossover, alignCrossoverPower,
   alignDiffuse, alignAdvert, alignPower, autoAlign,
   // Faceplate: time effects rack
+  chainViewGallery, chainViewRig,
   fxGroup, fxDeck, fxOrder, fxModPower, fxModType, fxModRate, fxModDepth, fxModMix, fxDelayPower,
   fxDelayTime, fxDelayDivision, fxDelaySync, fxDelayPingPong, fxDelayFeedback, fxDelayMix,
   fxDelayDamping, fxReverbPower, fxReverbSize, fxReverbDecay, fxReverbDamping, fxReverbMix,

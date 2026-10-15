@@ -23,7 +23,8 @@ public:
   // Bins are rounded to this before the moved-or-not comparison.
   static constexpr float kQuantumDb = 0.25f;
 
-  SpectrumFeed(Backend& backend, UiClock& clock, std::string blockId);
+  // `minIntervalMs` > 0 polls at most that often (a low refresh rate).
+  SpectrumFeed(Backend& backend, UiClock& clock, std::string blockId, int minIntervalMs = 0);
   ~SpectrumFeed() override;
 
   const std::vector<float>& bins() const { return bins_; }
@@ -35,6 +36,8 @@ private:
   Backend& backend_;
   UiClock& clock_;
   std::string blockId_;
+  int minIntervalMs_ = 0;
+  juce::uint32 lastPollMs_ = 0;
   std::vector<float> bins_, scratch_;  // scratch_: reused poll buffer
 };
 

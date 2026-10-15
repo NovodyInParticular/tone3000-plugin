@@ -64,6 +64,10 @@ public:
   static constexpr const char* kShowTimeFxControl = "t3k.showTimeFxControl";
   // The active skin's id (machine-wide, every instance); empty = default.
   static constexpr const char* kSkin = "t3k.skin";
+  // Chain area view: "gallery" (default) or "rig".
+  static constexpr const char* kChainView = "t3k.chainView";
+  // Rig-view output analyser refresh: "normal" (default), "low" or "off".
+  static constexpr const char* kSpectrumRate = "t3k.spectrumRate";
   static constexpr const char* kShowPresetPcNumbers = "t3k.showPresetPcNumbers";
   static constexpr const char* kTokens = "t3k_tokens";
   static constexpr const char* kCachedUser = "t3k.cachedUser";

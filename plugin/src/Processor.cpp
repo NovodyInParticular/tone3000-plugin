@@ -1064,6 +1064,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   // Every time-FX buffer is sized here for the worst case; the rack never
   // allocates while processing.
   timeFx.prepare(sampleRate, samplesPerBlock);
+  outputSpectrum.prepare(sampleRate);
 
   // Chain-edit fade: host-rate. Primed audible normally, but a device can
   // start while a fade session holds the chain (launch: state restore arms
@@ -2306,6 +2307,11 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
       peakR = peakL;
     outputMeterLevelL.store(peakToDb(peakL));
     outputMeterLevelR.store(peakToDb(peakR));
+
+    // Output spectrum (rig view): copies into a lock-free ring only while a
+    // UI analyser is open; the FFT runs on the message thread.
+    if (outputSpectrum.isEnabled())
+      outputSpectrum.pushSamples(l, r, numSamples);
   }
 }
 
