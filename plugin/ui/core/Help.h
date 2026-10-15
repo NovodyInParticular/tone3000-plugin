@@ -20,6 +20,10 @@ enum class Key {
   spreadDiffuse, spreadAdvert, spreadPower, imageCorrelation, spreadMonoOutput, spreadDualMono,
   alignOffset, alignWobble, alignWobblePower, alignCrossover, alignCrossoverPower,
   alignDiffuse, alignAdvert, alignPower, autoAlign,
+  // Faceplate: time effects rack
+  fxGroup, fxDeck, fxOrder, fxModPower, fxModType, fxModRate, fxModDepth, fxModMix, fxDelayPower,
+  fxDelayTime, fxDelayDivision, fxDelaySync, fxDelayPingPong, fxDelayFeedback, fxDelayMix,
+  fxDelayDamping, fxReverbPower, fxReverbSize, fxReverbDecay, fxReverbDamping, fxReverbMix,
   // Top bar
   tuner, undo, redo, settings, account, monoMode, stereoMode,
   // Presets

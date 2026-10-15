@@ -21,6 +21,7 @@
 
 #include <memory>
 
+#include "FxGroup.h"
 #include "GateGroup.h"
 #include "PitchGroup.h"
 #include "StereoImageGroup.h"
@@ -65,6 +66,8 @@ private:
   GateGroup gate_;
   PitchGroup pitch_;
   ParamBinding gateEnabled_, pitchEnabled_;
+  // Time FX: after the cluster (it sits after the cab in the signal path).
+  FxGroup fx_;
 
   DimGroup toneDim_;
   ParamKnob bass_, middle_, treble_;

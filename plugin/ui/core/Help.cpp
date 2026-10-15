@@ -87,6 +87,27 @@ std::map<Key, String> buildTable() {
       knobDesktop("Tonality", "highs above this stay put, 1-20 kHz. Keeps pick attack bright; Off: pure shift.");
   t[Key::pitchWindow] = knobDesktop(
       "Buffer", "shifter delay buffer, 20-60 ms. Short: less latency · long: cleaner, more latency.");
+  t[Key::fxGroup] = U("Time FX: modulation, delay and reverb after the cab. Right-click: open the rack.");
+  t[Key::fxDeck] = U("Time FX Rack: open the modulation, delay and reverb controls.");
+  t[Key::fxOrder] = U("Order: the order the three effects run in. Click: next order.");
+  t[Key::fxModPower] = U("MOD: chorus / flanger on/off.");
+  t[Key::fxModType] = U("FLANGER: short swept delay with feedback. Off: chorus.");
+  t[Key::fxModRate] = knobDesktop("Rate", "modulation speed, 0.05-10 Hz.");
+  t[Key::fxModDepth] = knobDesktop("Depth", "how far the sweep moves.");
+  t[Key::fxModMix] = knobDesktop("Mix", "dry/wet. 50 %: classic chorus · 100 %: vibrato.");
+  t[Key::fxDelayPower] = U("DLY: delay on/off. Off lets the repeats ring out.");
+  t[Key::fxDelayTime] = knobDesktop("Time", "delay time, 1 ms-2 s.");
+  t[Key::fxDelayDivision] = knobDesktop("Division", "delay time as a note value at the host tempo (120 BPM without one).");
+  t[Key::fxDelaySync] = U("SYNC: lock the delay time to the host tempo.");
+  t[Key::fxDelayPingPong] = U("PING: repeats bounce between left and right.");
+  t[Key::fxDelayFeedback] = knobDesktop("Feedback", "how many repeats, 0-95 %.");
+  t[Key::fxDelayMix] = knobDesktop("Mix", "repeat level; the dry signal stays at full level.");
+  t[Key::fxDelayDamping] = knobDesktop("Damping", "each repeat darker than the last. 0: clean digital.");
+  t[Key::fxReverbPower] = U("REV: reverb on/off. Off lets the tail ring out.");
+  t[Key::fxReverbSize] = knobDesktop("Size", "room size.");
+  t[Key::fxReverbDecay] = knobDesktop("Decay", "reverb time (RT60), 0.2-10 s.");
+  t[Key::fxReverbDamping] = knobDesktop("Damping", "how fast the highs die away in the tail.");
+  t[Key::fxReverbMix] = knobDesktop("Mix", "reverb level; the dry signal stays at full level.");
   t[Key::toneBass] = knobDesktop("Bass", "tone stack lows, 0-10: ±20 dB shelf at 150 Hz.");
   t[Key::toneMiddle] = knobDesktop("Middle", "tone stack mids, 0-10: ±15 dB bell at 425 Hz.");
   t[Key::toneTreble] = knobDesktop("Treble", "tone stack highs, 0-10: ±10 dB shelf at 1.8 kHz.");

@@ -225,6 +225,7 @@ Faceplate::Faceplate(Services& services)
       pitch_(services),
       gateEnabled_(services.backend, "gateEnabled"),
       pitchEnabled_(services.backend, "pitchEnabled"),
+      fx_(services),
       bass_(services.backend, "toneBass",
             primaryKnob("Bass", scales::tone(), 0.5f, help::Key::toneBass)),
       middle_(services.backend, "toneMid",
@@ -249,6 +250,8 @@ Faceplate::Faceplate(Services& services)
   // the power switches ask for.
   addChildComponent(gate_);
   addChildComponent(pitch_);
+  addChildComponent(fx_);
+  fx_.onPowerChange = [this] { syncFlags(); };
 
   // Powered-off section: knobs + labels dim and go inert; the power button
   // stays outside the dimmed wrapper, bright and clickable.
@@ -284,7 +287,9 @@ Faceplate::~Faceplate() {
 void Faceplate::autoMeasureChanged() { autoBalance_.setOn(services_.autoBalance.listening()); }
 
 void Faceplate::prefChanged(const juce::String& key) {
-  if (key == UiPrefs::kShowGateControl || key == UiPrefs::kShowPitchControl) syncFlags();
+  if (key == UiPrefs::kShowGateControl || key == UiPrefs::kShowPitchControl ||
+      key == UiPrefs::kShowTimeFxControl)
+    syncFlags();
 }
 
 void Faceplate::showEffect(juce::Component& group, bool show) {
@@ -302,6 +307,7 @@ void Faceplate::syncFlags() {
   // setting hide it.
   showEffect(gate_, services_.prefs.getBool(UiPrefs::kShowGateControl, true) || gateEnabled_.boolValue());
   showEffect(pitch_, services_.prefs.getBool(UiPrefs::kShowPitchControl, false) || pitchEnabled_.boolValue());
+  showEffect(fx_, services_.prefs.getBool(UiPrefs::kShowTimeFxControl, true) || fx_.anyOn());
 
   // The rig can drive two distinct output channels at all (stereo host bus /
   // 2+ channel output device). False dims the Spread group and makes it
@@ -359,12 +365,13 @@ void Faceplate::resized() {
   const bool gate = gate_.isVisible(), pitch = pitch_.isVisible();
   const int effectsW =
       (gate ? GateGroup::kWidth : 0) + (gate && pitch ? kEffectsGap : 0) + (pitch ? PitchGroup::kWidth : 0);
+  const int fxW = fx_.isVisible() ? FxGroup::width() : 0;
   const int toneW = 3 * primary + 2 * kToneGap + kGroupGap + box;
   const int imageW = StereoImageGroup::kWidth;
   const int outputW = box + kGroupGap + secondary + kGroupGap + primary;
-  const int peers = 4 + (effectsW > 0 ? 1 : 0);
-  const float gap =
-      (content.getWidth() - (inputW + effectsW + toneW + imageW + outputW)) / static_cast<float>(peers - 1);
+  const int peers = 4 + (effectsW > 0 ? 1 : 0) + (fxW > 0 ? 1 : 0);
+  const float gap = (content.getWidth() - (inputW + effectsW + fxW + toneW + imageW + outputW)) /
+                    static_cast<float>(peers - 1);
 
   float x = static_cast<float>(content.getX());
   const auto at = design::snap;
@@ -392,6 +399,12 @@ void Faceplate::resized() {
   treble_.setTopLeftPosition(2 * (primary + kToneGap), 0);
   tonePower_.setTopLeftPosition(at(x) + 3 * primary + 2 * kToneGap + kGroupGap, chromeY);
   x += toneW + gap;
+
+  // Time FX (post-cab, so after the tone stack like the signal path)
+  if (fxW > 0) {
+    fx_.setTopLeftPosition(at(x), knobY(secondary));
+    x += fxW + gap;
+  }
 
   // Spread / Align slot
   imageDim_.setBounds(at(x), knobBottom - StereoImageGroup::height(), imageW, StereoImageGroup::height());

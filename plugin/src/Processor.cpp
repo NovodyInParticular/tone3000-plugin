@@ -169,6 +169,56 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.pitchStep = get("pitchStep");
   paramRefs.pitchTonality = get("pitchTonality");
   paramRefs.pitchWindow = get("pitchWindow");
+  paramRefs.fxDelayEnabled = get("fxDelayEnabled");
+  paramRefs.fxDelayTime = get("fxDelayTime");
+  paramRefs.fxDelaySync = get("fxDelaySync");
+  paramRefs.fxDelayDivision = get("fxDelayDivision");
+  paramRefs.fxDelayFeedback = get("fxDelayFeedback");
+  paramRefs.fxDelayMix = get("fxDelayMix");
+  paramRefs.fxDelayPingPong = get("fxDelayPingPong");
+  paramRefs.fxDelayDamping = get("fxDelayDamping");
+  paramRefs.fxReverbEnabled = get("fxReverbEnabled");
+  paramRefs.fxReverbSize = get("fxReverbSize");
+  paramRefs.fxReverbDecay = get("fxReverbDecay");
+  paramRefs.fxReverbDamping = get("fxReverbDamping");
+  paramRefs.fxReverbMix = get("fxReverbMix");
+  paramRefs.fxModEnabled = get("fxModEnabled");
+  paramRefs.fxModType = get("fxModType");
+  paramRefs.fxModRate = get("fxModRate");
+  paramRefs.fxModDepth = get("fxModDepth");
+  paramRefs.fxModMix = get("fxModMix");
+  paramRefs.fxOrder = get("fxOrder");
+}
+
+// The time-FX rack's settings, decoded from the parameter atomics. Safe on
+// any thread (plain atomic loads): the audio thread caches it per block,
+// getTailLengthSeconds reads it directly.
+timefx::Params TONE3000Processor::timeFxParamsFromRefs() const {
+  const auto on = [](const std::atomic<float>* param) { return param->load() > 0.5f; };
+  const auto index = [](const std::atomic<float>* param) {
+    return static_cast<int>(std::lround(param->load()));
+  };
+  timefx::Params p;
+  p.delay.on = on(paramRefs.fxDelayEnabled);
+  p.delay.timeMs = paramRefs.fxDelayTime->load();
+  p.delay.sync = on(paramRefs.fxDelaySync);
+  p.delay.division = index(paramRefs.fxDelayDivision);
+  p.delay.feedback = paramRefs.fxDelayFeedback->load() * 0.95f;
+  p.delay.mix = paramRefs.fxDelayMix->load();
+  p.delay.pingPong = on(paramRefs.fxDelayPingPong);
+  p.delay.damping = paramRefs.fxDelayDamping->load();
+  p.reverb.on = on(paramRefs.fxReverbEnabled);
+  p.reverb.size = paramRefs.fxReverbSize->load();
+  p.reverb.decayS = paramRefs.fxReverbDecay->load();
+  p.reverb.damping = paramRefs.fxReverbDamping->load();
+  p.reverb.mix = paramRefs.fxReverbMix->load();
+  p.mod.on = on(paramRefs.fxModEnabled);
+  p.mod.flanger = index(paramRefs.fxModType) == 1;
+  p.mod.rateHz = paramRefs.fxModRate->load();
+  p.mod.depth = paramRefs.fxModDepth->load();
+  p.mod.mix = paramRefs.fxModMix->load();
+  p.order = index(paramRefs.fxOrder);
+  return p;
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createParameterLayout() {
@@ -372,6 +422,57 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       static_cast<int>(PitchShift::kDefaultWindow),
       juce::AudioParameterChoiceAttributes().withAutomatable(false)));
 
+  // Time effects rack after the cab (see TimeFx.h): delay, reverb and
+  // modulation, all off by default so existing sessions and presets sound
+  // unchanged. Times ride log maps like the gate release; the 0..1 knobs
+  // are normalized (feedback is scaled to 0..0.95 by the processor).
+  const auto logRange = [](float start, float end) {
+    return juce::NormalisableRange<float>(
+        start, end,
+        [](float a, float b, float norm) { return a * std::pow(b / a, norm); },
+        [](float a, float b, float v) { return std::log(v / a) / std::log(b / a); });
+  };
+  const auto boolParam = [](const char* id, int versionHint, bool defaultValue) {
+    return std::make_unique<juce::AudioParameterBool>(juce::ParameterID{id, versionHint}, id,
+                                                      defaultValue);
+  };
+  juce::StringArray divisions;
+  for (const auto* name : timefx::kDivisionNames) divisions.add(name);
+  juce::StringArray orders;
+  for (const auto* name : timefx::kOrderNames) orders.add(name);
+
+  layout.add(boolParam("fxDelayEnabled", 44, false));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"fxDelayTime", 45}, "fxDelayTime", logRange(1.0f, 2000.0f), 380.0f,
+      wholeUnitText("ms")));
+  layout.add(boolParam("fxDelaySync", 46, false));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"fxDelayDivision", 47}, "fxDelayDivision", divisions, 5));
+  layout.add(normParam("fxDelayFeedback", 48, 0.35f / 0.95f));
+  layout.add(normParam("fxDelayMix", 49, 0.3f));
+  layout.add(boolParam("fxDelayPingPong", 50, false));
+  layout.add(normParam("fxDelayDamping", 51, 0.3f));
+  layout.add(boolParam("fxReverbEnabled", 52, false));
+  layout.add(normParam("fxReverbSize", 53, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"fxReverbDecay", 54}, "fxReverbDecay",
+      logRange(0.2f, static_cast<float>(timefx::kMaxReverbSeconds)), 1.8f,
+      juce::AudioParameterFloatAttributes().withLabel("s").withStringFromValueFunction(
+          [](float v, int) { return juce::String(v, 1); })));
+  layout.add(normParam("fxReverbDamping", 55, 0.4f));
+  layout.add(normParam("fxReverbMix", 56, 0.25f));
+  layout.add(boolParam("fxModEnabled", 57, false));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"fxModType", 58}, "fxModType", juce::StringArray{"Chorus", "Flanger"}, 0));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"fxModRate", 59}, "fxModRate", logRange(0.05f, 10.0f), 0.8f,
+      juce::AudioParameterFloatAttributes().withLabel("Hz").withStringFromValueFunction(
+          [](float v, int) { return juce::String(v, 2); })));
+  layout.add(normParam("fxModDepth", 60, 0.5f));
+  layout.add(normParam("fxModMix", 61, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"fxOrder", 62}, "fxOrder", orders, 0));
+
   return layout;
 }
 
@@ -571,7 +672,10 @@ double TONE3000Processor::getTailLengthSeconds() const {
   //    reference NAM plugin reports the same allowance for VST3 tail checks.
   const double irTailSeconds = irTailBaseSamples.load() / kChainBaseSampleRate;
   const double dcBlockerTailSeconds = 10.0 / 5.0;
-  return std::max(irTailSeconds, dcBlockerTailSeconds);
+  //  - The time-FX rack's repeats and reverb tail.
+  const double fxTailSeconds =
+      timefx::Rack::tailSeconds(timeFxParamsFromRefs(), hostBpm.load(std::memory_order_relaxed));
+  return std::max({irTailSeconds, dcBlockerTailSeconds, fxTailSeconds});
 }
 
 // The host program API (getNumPrograms and friends) lives in
@@ -945,6 +1049,9 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   stereoOffset.prepare(sampleRate, samplesPerBlock);
   autoOffset.prepare(sampleRate);
   inputGate.prepare(sampleRate);
+  // Every time-FX buffer is sized here for the worst case; the rack never
+  // allocates while processing.
+  timeFx.prepare(sampleRate, samplesPerBlock);
 
   // Chain-edit fade: host-rate. Primed audible normally, but a device can
   // start while a fade session holds the chain (launch: state restore arms
@@ -1041,6 +1148,7 @@ void TONE3000Processor::releaseResources() {
   trebleFilter.reset();
   dcBlocker.reset();
   inputGate.reset();
+  timeFx.reset();
 }
 
 bool TONE3000Processor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -1175,6 +1283,8 @@ void TONE3000Processor::updateCachedParameters() {
   cachePitch.tonalityHz = tonalityHz < PitchShift::kTonalityOffHz ? tonalityHz : 0.0f;
   cachePitch.window =
       PitchShift::windowFromIndex(static_cast<int>(std::lround(paramRefs.pitchWindow->load())));
+
+  cacheTimeFx = timeFxParamsFromRefs();
 }
 
 // The outgoing half of a swap crossfade: the retiring model's own wet path
@@ -2122,6 +2232,21 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // EQ section (global 3-band tone stack), post-chain.
   // ##########
   processToneStack(buffer);
+
+  // ##########
+  // Time effects (delay / reverb / modulation) after the cab and tone
+  // stack. Tempo comes from the host when it has one; tails keep ringing
+  // through chain-edit fades (the fade sits upstream).
+  // ##########
+  {
+    double bpm = 0.0;
+    if (auto* playHead = getPlayHead())
+      if (const auto position = playHead->getPosition())
+        if (const auto tempo = position->getBpm())
+          bpm = *tempo;
+    hostBpm.store(bpm, std::memory_order_relaxed);
+    timeFx.process(buffer, cacheTimeFx, bpm);
+  }
 
   // ##########
   // Auto-align probe mute: fades the output before the probe starts, holds

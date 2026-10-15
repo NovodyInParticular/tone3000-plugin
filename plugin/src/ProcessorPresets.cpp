@@ -31,6 +31,13 @@ const std::vector<juce::String>& TONE3000Processor::presetParameterIds() {
       "alignDiffuseEnabled",
       "chainPanLeft",   "chainPanRight",    "chainPanLinked",
       "chainInvertLeft", "chainInvertRight",
+      "fxDelayEnabled", "fxDelayTime",    "fxDelaySync",
+      "fxDelayDivision", "fxDelayFeedback", "fxDelayMix",
+      "fxDelayPingPong", "fxDelayDamping",
+      "fxReverbEnabled", "fxReverbSize",  "fxReverbDecay",
+      "fxReverbDamping", "fxReverbMix",
+      "fxModEnabled",   "fxModType",        "fxModRate",
+      "fxModDepth",     "fxModMix",         "fxOrder",
   };
   return ids;
 }

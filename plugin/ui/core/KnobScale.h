@@ -171,6 +171,60 @@ inline const KnobScale& bufferMs() {
   return s;
 }
 
+// Time effects rack (plugin/include/TimeFx.h). These mirror the APVTS
+// ranges in Processor.cpp: delay time, reverb decay and mod rate ride log
+// maps; the division is the 11 tempo-synced detents; feedback's knob spans
+// the 0..95 % the processor allows.
+inline KnobScale logScale(double lo, double hi, std::function<juce::String(double)> text,
+                          std::function<juce::String(double)> edit) {
+  KnobScale c;
+  const auto value = [lo, hi](double n) { return lo * std::pow(hi / lo, n); };
+  c.toDisplay = value;
+  c.fromDisplay = [lo, hi](double d) { return std::log(std::max(d, lo) / lo) / std::log(hi / lo); };
+  c.format = [value, text](double n) { return text(value(n)); };
+  c.editText = [value, edit](double n) { return edit(value(n)); };
+  return c;
+}
+inline const KnobScale& fxDelayMs() {
+  static const KnobScale s = logScale(
+      1.0, 2000.0,
+      [](double ms) { return ms < 1000.0 ? juce::String(juce::roundToInt(ms)) + " ms" : labels::toFixed(ms / 1000.0, 2) + " s"; },
+      [](double ms) { return juce::String(juce::roundToInt(ms)); });
+  return s;
+}
+inline const KnobScale& fxDecayS() {
+  static const KnobScale s =
+      logScale(0.2, 10.0, [](double v) { return labels::toFixed(v, 1) + " s"; },
+               [](double v) { return labels::toFixed(v, 1); });
+  return s;
+}
+inline const KnobScale& fxRateHz() {
+  static const KnobScale s =
+      logScale(0.05, 10.0, [](double v) { return labels::toFixed(v, 2) + " Hz"; },
+               [](double v) { return labels::toFixed(v, 2); });
+  return s;
+}
+inline const KnobScale& fxFeedback() {
+  static const KnobScale s =
+      make([](double n) { return n * 95; }, [](double d) { return d / 95; }, "%", 0);
+  return s;
+}
+inline constexpr int kFxDivisions = 11;
+inline const KnobScale& fxDivision() {
+  static const KnobScale s = [] {
+    KnobScale c;
+    static constexpr const char* kNames[] = {"1/1",  "1/2", "1/4",  "1/4.",  "1/4T", "1/8",
+                                             "1/8.", "1/8T", "1/16", "1/16.", "1/16T"};
+    const auto index = [](double n) { return juce::jlimit(0, kFxDivisions - 1, juce::roundToInt(n * (kFxDivisions - 1))); };
+    c.toDisplay = [index](double n) { return index(n); };
+    c.fromDisplay = [](double d) { return juce::jlimit(0.0, 1.0, d / (kFxDivisions - 1)); };
+    c.format = [index](double n) { return juce::String(kNames[index(n)]); };
+    c.editText = [index](double n) { return juce::String(index(n)); };
+    return c;
+  }();
+  return s;
+}
+
 // Faceplate tone stack knobs: 0..10, 5 = flat.
 inline const KnobScale& tone() {
   static const KnobScale s = linear(0, 10, {}, 1);

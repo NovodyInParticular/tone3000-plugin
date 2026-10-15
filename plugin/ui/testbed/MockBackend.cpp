@@ -47,6 +47,13 @@ constexpr SliderDefault kSliders[] = {
     // Pitch shift at 0 st (centre) with its deck at the defaults: tonality
     // Off (top), the 30 ms buffer (second of four detents).
     {"pitchSemitones", 0.5f},    {"pitchTonality", 1.0f},  {"pitchWindow", 1.0f / 3.0f},
+    // Time FX at the processor defaults on their normalised maps
+    // (380 ms, 1/8, 35 % feedback, 1.8 s decay, 0.8 Hz).
+    {"fxDelayTime", 0.7814f},    {"fxDelayDivision", 0.5f}, {"fxDelayFeedback", 0.3684f},
+    {"fxDelayMix", 0.3f},        {"fxDelayDamping", 0.3f},
+    {"fxReverbSize", 0.5f},      {"fxReverbDecay", 0.5617f}, {"fxReverbDamping", 0.4f},
+    {"fxReverbMix", 0.25f},      {"fxModRate", 0.5233f},   {"fxModDepth", 0.5f},
+    {"fxModMix", 0.5f},          {"fxOrder", 0.0f},
 };
 struct ToggleDefault {
   const char* id;
@@ -63,6 +70,9 @@ constexpr ToggleDefault kToggles[] = {
     {"gateEnabled", true},             {"toneEqEnabled", true},
     {"pitchEnabled", false},           {"pitchStep", true},
     {"calibrateInput", false},         {"osEnabled", false},
+    {"fxDelayEnabled", false},         {"fxDelaySync", false},
+    {"fxDelayPingPong", false},        {"fxReverbEnabled", false},
+    {"fxModEnabled", false},           {"fxModType", false},
 };
 
 }  // namespace

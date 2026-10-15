@@ -326,6 +326,8 @@ target_sources(${PROJECT_NAME}
         include/ImageDeck.h
         include/Spread.h
         src/Spread.cpp
+        include/TimeFx.h
+        src/TimeFx.cpp
         include/StereoOffset.h
         src/StereoOffset.cpp
         include/AutoOffset.h

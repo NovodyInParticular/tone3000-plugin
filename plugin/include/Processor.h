@@ -27,6 +27,7 @@
 #include "PitchShift.h"
 #include "Spread.h"
 #include "StereoOffset.h"
+#include "TimeFx.h"
 #include "PresetManager.h"
 #include "TunerDetector.h"
 #include <mutex>
@@ -1253,7 +1254,27 @@ private:
     std::atomic<float>* pitchStep = nullptr;
     std::atomic<float>* pitchTonality = nullptr;
     std::atomic<float>* pitchWindow = nullptr;
+    std::atomic<float>* fxDelayEnabled = nullptr;
+    std::atomic<float>* fxDelayTime = nullptr;
+    std::atomic<float>* fxDelaySync = nullptr;
+    std::atomic<float>* fxDelayDivision = nullptr;
+    std::atomic<float>* fxDelayFeedback = nullptr;
+    std::atomic<float>* fxDelayMix = nullptr;
+    std::atomic<float>* fxDelayPingPong = nullptr;
+    std::atomic<float>* fxDelayDamping = nullptr;
+    std::atomic<float>* fxReverbEnabled = nullptr;
+    std::atomic<float>* fxReverbSize = nullptr;
+    std::atomic<float>* fxReverbDecay = nullptr;
+    std::atomic<float>* fxReverbDamping = nullptr;
+    std::atomic<float>* fxReverbMix = nullptr;
+    std::atomic<float>* fxModEnabled = nullptr;
+    std::atomic<float>* fxModType = nullptr;
+    std::atomic<float>* fxModRate = nullptr;
+    std::atomic<float>* fxModDepth = nullptr;
+    std::atomic<float>* fxModMix = nullptr;
+    std::atomic<float>* fxOrder = nullptr;
   } paramRefs;
+  timefx::Params timeFxParamsFromRefs() const;
   void resolveParamRefs();
 
   /** The oversampling factor the osEnabled/osFactor parameters currently
@@ -1331,6 +1352,12 @@ private:
   float cacheInputCalibrationLevel = 12.0f;
   bool cachePitchEnabled = false;
   PitchShift::Params cachePitch;
+  timefx::Params cacheTimeFx;
+
+  // Time effects after the tone stack (see TimeFx.h). Host tempo from the
+  // last callback, for the tail report.
+  timefx::Rack timeFx;
+  std::atomic<double> hostBpm{0.0};
 
   void updateEqCoefficients();
   void updateCachedParameters();

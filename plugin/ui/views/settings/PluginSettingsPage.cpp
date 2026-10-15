@@ -91,6 +91,7 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       showPitch_("Show Pitch Shift",
                  "Transpose your instrument up or down without retuning or use a MIDI expression pedal for "
                  "whammy-style effects."),
+      showTimeFx_("Show Time FX", "Modulation, delay and reverb after the cab, each switchable from the faceplate."),
       namSize_("NAM A2 Size",
                "Default size for new NAM blocks. Existing blocks keep their own, so presets load as saved."),
       lite_("A2-Lite", "Sounds great and uses less CPU"),
@@ -153,6 +154,8 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
   showPitch_.onChange = [this](bool on) { services_.prefs.setBool(UiPrefs::kShowPitchControl, on); };
   add(showGate_);
   add(showPitch_);
+  showTimeFx_.onChange = [this](bool on) { services_.prefs.setBool(UiPrefs::kShowTimeFxControl, on); };
+  add(showTimeFx_);
 
   // NAM A2 Size.
   namSize_.setInlineLabel();
@@ -252,6 +255,7 @@ PluginSettingsPage::~PluginSettingsPage() {
 
 void PluginSettingsPage::prefChanged(const juce::String& key) {
   if (key == UiPrefs::kShowHints || key == UiPrefs::kShowGateControl || key == UiPrefs::kShowPitchControl ||
+      key == UiPrefs::kShowTimeFxControl ||
       key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl)
     syncPrefs();
 }
@@ -260,6 +264,7 @@ void PluginSettingsPage::syncPrefs() {
   infoBar_.setValue(services_.hints.enabled());
   showGate_.setValue(services_.prefs.getBool(UiPrefs::kShowGateControl, true));
   showPitch_.setValue(services_.prefs.getBool(UiPrefs::kShowPitchControl, false));
+  showTimeFx_.setValue(services_.prefs.getBool(UiPrefs::kShowTimeFxControl, true));
   const bool size = services_.prefs.getBool(UiPrefs::kShowBlockSizeControl, false);
   blockSize_.setValue(size);
   blockSize_.setExpanded(size);

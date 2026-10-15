@@ -89,6 +89,11 @@ const std::map<juce::String, Drive>& drives() {
          clickByHelp(root, "Pitch Shift:", /*right=*/true);
          wait(200);
        }},
+      {"chrome-fx-deck",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Time FX:", /*right=*/true);
+         wait(200);
+       }},
       {"chrome-spread-deck",
        [](PluginRoot& root, MockBackend&) {
          clickByHelp(root, "Offset:", /*right=*/true);
