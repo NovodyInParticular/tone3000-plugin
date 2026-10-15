@@ -19,6 +19,7 @@ PluginRoot::PluginRoot(Services& services)
       main_(services),
       faceplate_(services),
       toast_(services.toast),
+      lite_(services.lite),
       hintTracker_(services.hints, *this),
       pointerTracker_(services.pointer, *this) {
   setOpaque(true);
@@ -70,6 +71,7 @@ PluginRoot::PluginRoot(Services& services)
   overlay_.setInterceptsMouseClicks(false, true);
   addAndMakeVisible(overlay_);
   overlay_.addChildComponent(toast_);
+  overlay_.addChildComponent(lite_);
 
   addMouseListener(&focusPolicy_, true);
   services_.hints.addListener(this);
@@ -470,6 +472,7 @@ void PluginRoot::resized() {
   // The toast floats above the faceplate, measured from the overlay's bottom.
   const int belowColumn = getHeight() - (slotH + design::kHeight + hintH);
   toast_.setBottomOffset(belowColumn + design::kPlateHeight + hintH + kToastGap);
+  lite_.setBottomOffset(belowColumn + design::kPlateHeight + hintH + 12);
 }
 
 }  // namespace t3k::ui

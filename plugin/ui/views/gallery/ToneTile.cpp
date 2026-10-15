@@ -1,6 +1,7 @@
 #include "ToneTile.h"
 
 #include "GalleryGeometry.h"
+#include "core/Fonts.h"
 #include "core/Help.h"
 #include "core/Icons.h"
 #include "core/Paint.h"
@@ -152,6 +153,21 @@ void ToneTile::paint(juce::Graphics& g) {
 }
 
 void ToneTile::paintOverChildren(juce::Graphics& g) {
+  // LITE badge, bottom-left: the block runs its A2-Lite model and that's
+  // news (the Lite advisor switched it, or the default size is Full).
+  auto& svc = services();
+  const bool lite = block_.tone.isNam() && block_.loaded && !isSlimSizeFull(block_.params.slimSize) &&
+                    (svc.lite.isSwitched(block_.blockId) ||
+                     isSlimSizeFull(svc.chain.state().namSlimSizeDefault));
+  if (lite && !dropArmed()) {
+    const juce::String text = "LITE";
+    const auto font = Fonts::mono(11);
+    const float w = Fonts::width(font, text) + 10.0f;
+    const juce::Rectangle<float> chip(static_cast<float>(kLedInset),
+                                      static_cast<float>(getHeight() - kLedInset) - 18.0f, w, 18.0f);
+    paint::fill(g, chip, theme::kIconBoxRadius, theme::kBrandYellow);
+    paint::capText(g, text, chip, font, 11, theme::kBlack);
+  }
   if (dropArmed())
     paint::dashedBorder(g, getLocalBounds().toFloat(), gallery::kTileCorner,
                         gallery::kFileDropBorder, gallery::kAddTileBorderWidth);

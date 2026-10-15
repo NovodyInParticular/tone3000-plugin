@@ -31,6 +31,7 @@
 #include "services/ConnectionGate.h"
 #include "services/Toast.h"
 #include "services/ToneStepper.h"
+#include "services/LiteAdvisor.h"
 #include "services/LoopbackServer.h"
 #include "services/OAuth.h"
 #include "services/Pointer.h"
@@ -990,6 +991,78 @@ struct ToneQueryTests : juce::UnitTest {
 // Previous / next per block, against the main-browse fixture: blk-1 holds
 // tone 104 at index 3 of page 1 (of 4), blk-2 tone 101 at index 0 of page
 // 2; both lists are [101 102 103 104 105 106].
+struct LiteAdvisorTests : juce::UnitTest {
+  LiteAdvisorTests() : juce::UnitTest("LiteAdvisor", "ui") {}
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("chrome-lite-suggest");
+    if (scenario == nullptr) {
+      expect(false, "chrome-lite-suggest scenario missing");
+      return;
+    }
+    struct Rig {
+      MockBackend backend;
+      UiClock clock;
+      ChainStore chain{backend, clock};
+      LiteAdvisor advisor{chain, nullptr};
+      explicit Rig(const juce::var& data) : backend(data) {}
+    };
+    using Mode = LiteAdvisor::Mode;
+
+    beginTest("only a sustained high load with Full NAM blocks suggests");
+    {
+      Rig rig(scenario->data);
+      expectEquals(rig.advisor.eligibleCount(), 2);
+      rig.advisor.tick(90.0f, 0);
+      rig.advisor.tick(90.0f, LiteAdvisor::kSustainMs - 1);
+      expect(rig.advisor.mode() == Mode::hidden, "not sustained yet");
+      rig.advisor.tick(50.0f, LiteAdvisor::kSustainMs);  // a dip restarts the window
+      rig.advisor.tick(90.0f, LiteAdvisor::kSustainMs + 1);
+      rig.advisor.tick(90.0f, 2 * LiteAdvisor::kSustainMs);
+      expect(rig.advisor.mode() == Mode::hidden, "the dip restarted the window");
+      rig.advisor.tick(90.0f, 2 * LiteAdvisor::kSustainMs + 2);
+      expect(rig.advisor.mode() == Mode::suggest);
+    }
+
+    beginTest("switch sets exactly the Full blocks to Lite; back to Full restores them");
+    {
+      Rig rig(scenario->data);
+      rig.advisor.tick(90.0f, 0);
+      rig.advisor.tick(90.0f, LiteAdvisor::kSustainMs);
+      rig.advisor.switchToLite();
+      expect(rig.advisor.mode() == Mode::switched);
+      expect(rig.advisor.isSwitched("blk-1") && rig.advisor.isSwitched("blk-2"));
+      expect(!rig.advisor.isSwitched("blk-3"), "IR blocks have no size");
+      expectEquals(rig.advisor.eligibleCount(), 0);
+      rig.advisor.backToFull();
+      expect(rig.advisor.mode() == Mode::hidden);
+      expectEquals(rig.advisor.eligibleCount(), 2);
+      // Snoozed: the same load doesn't re-suggest right away.
+      rig.advisor.tick(90.0f, LiteAdvisor::kSustainMs + 1);
+      rig.advisor.tick(90.0f, 3 * LiteAdvisor::kSustainMs);
+      expect(rig.advisor.mode() == Mode::hidden);
+    }
+
+    beginTest("not now snoozes; a block set back to Full by hand leaves the switched set");
+    {
+      Rig rig(scenario->data);
+      rig.advisor.tick(90.0f, 0);
+      rig.advisor.tick(90.0f, LiteAdvisor::kSustainMs);
+      rig.advisor.dismiss();
+      rig.advisor.tick(90.0f, 2 * LiteAdvisor::kSustainMs);
+      expect(rig.advisor.mode() == Mode::hidden);
+      rig.advisor.tick(90.0f, LiteAdvisor::kSnoozeMs + 3 * LiteAdvisor::kSustainMs);
+      expect(rig.advisor.mode() == Mode::suggest, "the snooze ran out");
+      rig.advisor.switchToLite();
+      rig.chain.setBlockSlimSize("blk-1", kSlimSizeFull);
+      rig.chain.refresh(true);
+      expect(!rig.advisor.isSwitched("blk-1"));
+      expect(rig.advisor.isSwitched("blk-2"));
+    }
+  }
+};
+
 struct ToneStepperTests : juce::UnitTest {
   ToneStepperTests() : juce::UnitTest("ToneStepper", "ui") {}
 
@@ -2875,6 +2948,7 @@ UiPrefsTests uiPrefsTests;
 Tone3000ClientTests tone3000ClientTests;
 ToneModelTests toneModelTests;
 ToneQueryTests toneQueryTests;
+LiteAdvisorTests liteAdvisorTests;
 ToneStepperTests toneStepperTests;
 ReadoutTests readoutTests;
 

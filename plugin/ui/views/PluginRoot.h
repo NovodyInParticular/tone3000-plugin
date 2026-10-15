@@ -41,6 +41,7 @@
 #include "MainScreen.h"
 #include "PluginHeader.h"
 #include "SignInScreen.h"
+#include "LiteSuggestionView.h"
 #include "ToastView.h"
 #include "TunerView.h"
 #include "browser/ToneBrowser.h"
@@ -154,6 +155,7 @@ private:
   AppBanner banner_;
   juce::Component overlay_;
   ToastView toast_;
+  LiteSuggestionView lite_;
   std::unique_ptr<UpdateNotice> updateNotice_;
   std::unique_ptr<ConnectionModal> connectionModal_;
   HintTracker hintTracker_;

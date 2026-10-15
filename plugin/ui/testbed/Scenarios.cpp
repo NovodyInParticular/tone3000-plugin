@@ -94,6 +94,20 @@ const std::map<juce::String, Drive>& drives() {
          clickByHelp(root, "Time FX:", /*right=*/true);
          wait(200);
        }},
+      // The advisor's sustain window, compressed: two polls 7 s apart at 90 %.
+      {"chrome-lite-suggest",
+       [](PluginRoot& root, MockBackend&) {
+         root.services().lite.tick(90.0f, 1000);
+         root.services().lite.tick(90.0f, 8000);
+         wait(100);
+       }},
+      {"chrome-lite-switched",
+       [](PluginRoot& root, MockBackend&) {
+         root.services().lite.tick(90.0f, 1000);
+         root.services().lite.tick(90.0f, 8000);
+         root.services().lite.switchToLite();
+         wait(300);
+       }},
       {"chrome-spread-deck",
        [](PluginRoot& root, MockBackend&) {
          clickByHelp(root, "Offset:", /*right=*/true);
