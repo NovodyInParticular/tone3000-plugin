@@ -7,6 +7,16 @@ set(T3K_UI_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 # Embedded fonts (Roboto Mono and Arimo, both Apache-2.0) and brand artwork,
 # in their own namespace/header (UiBinaryData) so they read as UI assets.
+# Built-in skins: one folder per skin with its skin.json manifest (the same
+# format users drop into their skins folder, see SKINS.md). Copied under
+# unique names first, since binary data symbols come from file names.
+set(T3K_BUILTIN_SKIN_FILES)
+foreach(_skin classic neural minimal vintage)
+    configure_file("${T3K_UI_DIR}/skins/${_skin}/skin.json"
+                   "${CMAKE_BINARY_DIR}/t3k_skins/skin_${_skin}.json" COPYONLY)
+    list(APPEND T3K_BUILTIN_SKIN_FILES "${CMAKE_BINARY_DIR}/t3k_skins/skin_${_skin}.json")
+endforeach()
+
 if (NOT TARGET NativeUiAssets)
     juce_add_binary_data(NativeUiAssets
         NAMESPACE UiBinaryData
@@ -20,6 +30,7 @@ if (NOT TARGET NativeUiAssets)
             "${T3K_UI_DIR}/assets/Arimo-BoldItalic.ttf"
             "${T3K_UI_DIR}/assets/t3k.svg"
             "${T3K_UI_DIR}/assets/t3k-mark.svg"
+            ${T3K_BUILTIN_SKIN_FILES}
     )
     # Plugin formats are shared libraries; the object code needs to be PIC.
     set_target_properties(NativeUiAssets PROPERTIES POSITION_INDEPENDENT_CODE ON)

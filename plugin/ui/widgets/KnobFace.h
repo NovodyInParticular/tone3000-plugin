@@ -29,6 +29,7 @@ struct KnobFaceCache {
   struct Entry {
     int devicePx = 0;
     KnobTone tone = KnobTone::primary;
+    int generation = 0;  // theme::kGeneration it was drawn for
     juce::Image base, face;
   };
   std::vector<Entry> entries;

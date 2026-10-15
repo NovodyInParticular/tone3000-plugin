@@ -1,0 +1,35 @@
+{
+  "name": "Neural",
+  "author": "TONE3000 rig fork",
+  "version": "1.0",
+  "description": "Near-black, neon cyan and magenta, glowing rings, monospace labels, a faint scan grid.",
+  "colors": {
+    "accent": "#00F0FF",
+    "brandRed": "#FF2E88",
+    "brandBlue": "#7A5CFF",
+    "link": "#00F0FF",
+    "text": "#E6FFFC",
+    "black": "#04060A",
+    "muted": "#BDEFF299",
+    "subtle": "#BDEFF266",
+    "highlight": "#00F0FF26",
+    "gray": "#5E7C84",
+    "border": "#00F0FF47",
+    "surface": "#081016",
+    "surfaceRaised": "#0B151C",
+    "segmentedTrack": "#00F0FF24",
+    "panelBg": "#060B10"
+  },
+  "style": {
+    "knob": "ring",
+    "glow": 0.6,
+    "scanlines": 0.22,
+    "grid": 0.14,
+    "monoLabels": true,
+    "animations": true,
+    "glitchOnLoad": true,
+    "grille": "hex",
+    "knobFace": "#0A1218",
+    "background": "#04060A"
+  }
+}

@@ -45,6 +45,12 @@ private:
 
   Services& services_;
 
+  // Skin picker (core/Skin.h): built-ins plus the user's skins folder.
+  FieldRow skin_;
+  SelectField skinSelect_{"Skin"};
+  FormButton openSkins_;
+  FormBox openSkinsBox_;
+
   ToggleRow infoBar_;
   // View-only toggles for the faceplate's gate / pitch groups; the
   // Faceplate shows a powered effect regardless.

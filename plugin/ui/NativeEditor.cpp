@@ -1,5 +1,7 @@
 #include "NativeEditor.h"
 
+#include "core/Skin.h"
+
 #include "core/Fonts.h"
 
 namespace t3k::ui {
@@ -79,7 +81,8 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
       prefs_(&prefsFile_->file, &prefsFile_->lock),
       session_(backend_, prefs_, http_, Tone3000Session::Config::fromBuild()),
       services_(backend_, session_, *this, prefs_),
-      root_(services_) {
+      skinReady_(prefs_),
+      root_(std::make_unique<PluginRoot>(services_)) {
   // MIDI tone steps go through the stepper while the window is open (memo,
   // prefetch, next-page fetches); with it closed the processor steps alone.
   processor_.blockStepHandler = [this](const std::string& blockId, int delta) {
@@ -91,7 +94,8 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
   // plugin instances in the same process.
   juce::LookAndFeel::setDefaultLookAndFeel(&darkLookAndFeel_.get());
   setOpaque(true);
-  addAndMakeVisible(root_);
+  addAndMakeVisible(*root_);
+  prefs_.addListener(this);
   // Nothing polls or repaints while the window is minimised or the editor
   // hidden (isShowing covers both); visibilityChanged /
   // parentHierarchyChanged wake the clock when it is back.
@@ -121,6 +125,7 @@ NativeEditor::NativeEditor(TONE3000Processor& owner)
 }
 
 NativeEditor::~NativeEditor() {
+  prefs_.removeListener(this);
   processor_.blockStepHandler = nullptr;
   stopTimer();
 }
@@ -207,7 +212,7 @@ void NativeEditor::fitRoot() {
     stopTimer();
   }
   scale = juce::jmax(0.05, scale);
-  root_.setTransform(juce::AffineTransform::scale(static_cast<float>(scale)));
+  root_->setTransform(juce::AffineTransform::scale(static_cast<float>(scale)));
   services_.zoom.set(scale);
   // Top-anchored, horizontally centred. iOS centres vertically too: its
   // window never resizes, so nothing can jump.
@@ -217,10 +222,34 @@ void NativeEditor::fitRoot() {
 #else
   const int y = 0;
 #endif
-  root_.setTopLeftPosition(x, y);
+  root_->setTopLeftPosition(x, y);
 }
 
-void NativeEditor::paint(juce::Graphics& g) { g.fillAll(juce::Colours::black); }
+void NativeEditor::paint(juce::Graphics& g) { g.fillAll(theme::kBlack); }
+
+NativeEditor::SkinReady::SkinReady(UiPrefs& prefs) { skin::apply(prefs.get(UiPrefs::kSkin)); }
+
+void NativeEditor::prefChanged(const juce::String& key) {
+  if (key != UiPrefs::kSkin) return;
+  // Not from inside the listener call: the picker that wrote the pref lives
+  // in the tree being replaced.
+  juce::Component::SafePointer<NativeEditor> self(this);
+  juce::MessageManager::callAsync([self] {
+    if (self != nullptr) self->rebuildRoot();
+  });
+}
+
+void NativeEditor::rebuildRoot() {
+  skin::apply(prefs_.get(UiPrefs::kSkin));
+  const bool settingsOpen = root_->settings() != nullptr;
+  removeChildComponent(root_.get());
+  root_.reset();
+  root_ = std::make_unique<PluginRoot>(services_);
+  addAndMakeVisible(*root_);
+  if (settingsOpen) root_->openSettings(SettingsScreen::Tab::plugin);
+  fitRoot();
+  repaint();
+}
 
 void NativeEditor::paintOverChildren(juce::Graphics& g) {
   // Not paint(): the opaque root covers us, so JUCE clips our own paint to

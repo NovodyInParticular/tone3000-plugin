@@ -50,7 +50,7 @@ juce::Rectangle<int> FxGroup::captionBounds() const {
 }
 
 void FxGroup::paint(juce::Graphics& g) {
-  g.setFont(Fonts::sans(kLabelSize));
+  g.setFont(theme::kStyle.monoLabels ? Fonts::mono(kLabelSize - 2) : Fonts::sans(kLabelSize));
   g.setColour(deck_.isOpen() ? theme::kWhite : theme::kGray);
   g.drawText("Time FX", captionBounds(), juce::Justification::centred, false);
 }

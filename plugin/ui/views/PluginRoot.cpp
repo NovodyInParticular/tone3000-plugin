@@ -1,6 +1,7 @@
 #include "PluginRoot.h"
 
 #include "core/Design.h"
+#include "core/Skin.h"
 #include "core/Help.h"
 #include "core/NoDefaultFocus.h"
 #include "core/Theme.h"
@@ -423,7 +424,35 @@ void PluginRoot::logout() {
 }
 
 // Layout
-void PluginRoot::paint(juce::Graphics& g) { g.fillAll(theme::kBlack); }
+void PluginRoot::paint(juce::Graphics& g) {
+  g.fillAll(theme::kBlack);
+  // Skin backdrop behind the chain: its colour, optional art, and the
+  // grid / scanline texture, rendered once per size and skin.
+  const auto& style = theme::kStyle;
+  const auto area = main_.getBounds();
+  if (style.background == theme::kBlack && style.grid <= 0.0f && style.scanlines <= 0.0f &&
+      skin::background() == nullptr)
+    return;
+  if (backdrop_.getWidth() != area.getWidth() || backdrop_.getHeight() != area.getHeight() ||
+      backdropGeneration_ != theme::kGeneration) {
+    backdropGeneration_ = theme::kGeneration;
+    backdrop_ = juce::Image(juce::Image::ARGB, juce::jmax(1, area.getWidth()), juce::jmax(1, area.getHeight()), true);
+    juce::Graphics bg(backdrop_);
+    bg.fillAll(style.background);
+    if (const auto* art = skin::background())
+      art->drawWithin(bg, backdrop_.getBounds().toFloat(), juce::RectanglePlacement::fillDestination, 0.5f);
+    if (style.grid > 0.0f) {
+      bg.setColour(theme::kBrandYellow.withAlpha(0.18f * style.grid));
+      for (int x = 0; x < area.getWidth(); x += 32) bg.fillRect(x, 0, 1, area.getHeight());
+      for (int y = 0; y < area.getHeight(); y += 32) bg.fillRect(0, y, area.getWidth(), 1);
+    }
+    if (style.scanlines > 0.0f) {
+      bg.setColour(juce::Colours::black.withAlpha(0.5f * style.scanlines));
+      for (int y = 0; y < area.getHeight(); y += 3) bg.fillRect(0, y, area.getWidth(), 1);
+    }
+  }
+  g.drawImageAt(backdrop_, area.getX(), area.getY());
+}
 
 void PluginRoot::openSettings(SettingsScreen::Tab tab) {
   if (settings_ != nullptr) {

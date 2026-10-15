@@ -36,10 +36,10 @@ constexpr float kFadePower = 1.5f;
 void fillScrollFade(juce::Graphics& g, juce::Rectangle<float> band, bool solidAtTop) {
   const float edge = solidAtTop ? band.getY() : band.getBottom();
   const float far = solidAtTop ? band.getBottom() : band.getY();
-  auto fade = juce::ColourGradient::vertical(juce::Colours::black, edge, juce::Colours::transparentBlack, far);
-  fade.addColour(kFadeSolid, juce::Colours::black);
+  auto fade = juce::ColourGradient::vertical(theme::kBlack, edge, theme::kBlack.withAlpha(0.0f), far);
+  fade.addColour(kFadeSolid, theme::kBlack);
   for (const float t : {0.25f, 0.5f, 0.75f})
-    fade.addColour(kFadeSolid + t * (1 - kFadeSolid), juce::Colours::black.withAlpha(std::pow(1 - t, kFadePower)));
+    fade.addColour(kFadeSolid + t * (1 - kFadeSolid), theme::kBlack.withAlpha(std::pow(1 - t, kFadePower)));
   g.setGradientFill(fade);
   g.fillRect(band);
 }

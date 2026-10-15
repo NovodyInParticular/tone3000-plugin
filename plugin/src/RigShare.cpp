@@ -124,7 +124,7 @@ juce::var blockToVar(const Block& b, bool includeEmbedded) {
 }
 
 std::optional<Block> parseBlock(const juce::var& v, size_t& embedBudget, juce::String& error) {
-  if (!v.isObject()) {
+  if (v.getDynamicObject() == nullptr) {
     error = "A block isn't an object";
     return std::nullopt;
   }
@@ -143,7 +143,7 @@ std::optional<Block> parseBlock(const juce::var& v, size_t& embedBudget, juce::S
   if (b.type == "insert") return b;
 
   const auto& eq = v["eq"];
-  if (eq.isObject()) {
+  if (eq.getDynamicObject() != nullptr) {
     b.eqEnabled = flag(eq["enabled"], true);
     b.eqPre = flag(eq["pre"], false);
     if (const auto* bands = eq["bands"].getArray()) {
@@ -159,7 +159,7 @@ std::optional<Block> parseBlock(const juce::var& v, size_t& embedBudget, juce::S
     }
   }
   const auto& ir = v["dualIr"];
-  if (b.type == "ir" && ir.isObject()) {
+  if (b.type == "ir" && ir.getDynamicObject() != nullptr) {
     b.irBlend = num(ir["blend"], 0, 1, 0.5);
     b.irLevelA = num(ir["levelA"], -12, 12, 0);
     b.irLevelB = num(ir["levelB"], -12, 12, 0);
@@ -172,7 +172,7 @@ std::optional<Block> parseBlock(const juce::var& v, size_t& embedBudget, juce::S
   }
 
   const auto& tone = v["tone"];
-  if (!tone.isObject()) {
+  if (tone.getDynamicObject() == nullptr) {
     error = "A block has no tone";
     return std::nullopt;
   }
@@ -187,7 +187,7 @@ std::optional<Block> parseBlock(const juce::var& v, size_t& embedBudget, juce::S
       error = "A library tone has no valid id";
       return std::nullopt;
     }
-  } else if (const auto& e = tone["embedded"]; e.isObject()) {
+  } else if (const auto& e = tone["embedded"]; e.getDynamicObject() != nullptr) {
     juce::String name = juce::File::createLegalFileName(text(e["fileName"], 120));
     const juce::String ext = b.type == "nam" ? ".nam" : ".wav";
     if (!name.endsWithIgnoreCase(ext)) name = (name.isEmpty() ? juce::String("capture") : name) + ext;
@@ -263,7 +263,7 @@ juce::var toVar(const Rig& rig, bool includeEmbedded) {
 }
 
 std::optional<Rig> parse(const juce::var& data, juce::String& error) {
-  if (!data.isObject() || data["format"].toString() != kFormat) {
+  if (data.getDynamicObject() == nullptr || data["format"].toString() != kFormat) {
     error = "Not a TONE3000 rig";
     return std::nullopt;
   }

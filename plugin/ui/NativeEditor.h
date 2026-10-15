@@ -23,7 +23,10 @@
 
 namespace t3k::ui {
 
-class NativeEditor : public juce::AudioProcessorEditor, public Shell, private juce::Timer {
+class NativeEditor : public juce::AudioProcessorEditor,
+                     public Shell,
+                     private juce::Timer,
+                     private UiPrefs::Listener {
 public:
   explicit NativeEditor(TONE3000Processor& owner);
   ~NativeEditor() override;
@@ -59,6 +62,10 @@ private:
   void updateResizeConstraints();
   void fitRoot();
   void timerCallback() override { fitRoot(); }
+  // A skin change (from any editor: the pref is machine-wide) re-themes
+  // and rebuilds the view tree; services, session and audio carry on.
+  void prefChanged(const juce::String& key) override;
+  void rebuildRoot();
 
   // The per-machine preferences file. Every plugin instance in the process
   // reads and writes the same file, and PropertiesFile saves its whole
@@ -123,7 +130,12 @@ private:
   Tone3000Session session_;
   Services services_;
   FontsReady fontsReady_;
-  PluginRoot root_;
+  // Applies the saved skin before the root's first layout and paint.
+  struct SkinReady {
+    explicit SkinReady(UiPrefs& prefs);
+  } skinReady_;
+  // Rebuilt in place on a skin change (see rebuildRoot).
+  std::unique_ptr<PluginRoot> root_;
 };
 
 }  // namespace t3k::ui

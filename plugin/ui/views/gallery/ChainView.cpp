@@ -245,7 +245,7 @@ void ChainView::paint(juce::Graphics& g) {
 
 // Fade the lanes out under the gutters as they scroll.
 void ChainView::paintOverChildren(juce::Graphics& g) {
-  paint::edgeFades(g, scroller_->getBounds().toFloat(), gallery::kEdgeFadeWidth, juce::Colours::black);
+  paint::edgeFades(g, scroller_->getBounds().toFloat(), gallery::kEdgeFadeWidth, theme::kStyle.background);
 }
 
 // Sorting: pointer + keyboard

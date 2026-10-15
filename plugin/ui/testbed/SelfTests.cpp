@@ -32,6 +32,8 @@
 #include "services/Toast.h"
 #include "services/ToneStepper.h"
 #include "services/LiteAdvisor.h"
+#include "core/Skin.h"
+#include "core/Theme.h"
 #include "services/LoopbackServer.h"
 #include "services/OAuth.h"
 #include "services/Pointer.h"
@@ -991,6 +993,59 @@ struct ToneQueryTests : juce::UnitTest {
 // Previous / next per block, against the main-browse fixture: blk-1 holds
 // tone 104 at index 3 of page 1 (of 4), blk-2 tone 101 at index 0 of page
 // 2; both lists are [101 102 103 104 105 106].
+struct SkinTests : juce::UnitTest {
+  SkinTests() : juce::UnitTest("Skins", "ui") {}
+
+  void runTest() override {
+    beginTest("the built-ins are listed and apply; unknown ids fall back to the default");
+    {
+      const auto list = skin::available();
+      juce::StringArray ids;
+      for (const auto& i : list) ids.add(i.id);
+      for (const auto* id : {"neural", "minimal", "vintage", "classic"}) expect(ids.contains(id), id);
+      expectEquals(skin::apply("vintage"), juce::String("vintage"));
+      expectEquals(skin::apply("no-such-skin"), juce::String(skin::kDefaultId));
+      expect(theme::kStyle.knob == theme::KnobStyle::ring, "neural uses ring knobs");
+      expectEquals(skin::apply("classic"), juce::String("classic"));
+      expect(theme::kBrandYellow == juce::Colour(0xffffff00));
+      expect(theme::kStyle.knob == theme::KnobStyle::classic);
+    }
+
+    beginTest("broken manifests change nothing; missing or bad tokens keep the classic value");
+    {
+      skin::apply("classic");
+      const int gen = theme::kGeneration;
+      for (const auto* bad : {"", "{", "[1,2]", "null", "\"not an object\""})
+        expect(!skin::applyManifest(bad, {}), bad);
+      expectEquals(theme::kGeneration, gen);
+      expect(skin::applyManifest(R"({"colors":{"accent":"#11223344","text":"red","surface":"#12345"},
+                                     "style":{"glow":7,"knob":"ring","scanlines":"lots"}})", {}));
+      expect(theme::kBrandYellow == juce::Colour(0x44112233), "#RRGGBBAA");
+      expect(theme::kWhite == juce::Colour(0xffffffff), "a named colour is not a token value");
+      expect(theme::kSurface == juce::Colour(0xff151517), "a short hex keeps classic");
+      expectEquals(theme::kStyle.glow, 1.0f);
+      expectEquals(theme::kStyle.scanlines, 0.0f);
+      expect(theme::kGeneration > gen);
+      skin::apply("classic");
+    }
+
+    beginTest("a background reference can't leave the skin folder");
+    {
+      expect(skin::applyManifest(R"({"backgroundImage":"../../etc/passwd.svg"})", juce::File::getCurrentWorkingDirectory()));
+      expect(skin::background() == nullptr);
+      skin::apply("classic");
+    }
+
+    beginTest("user skins live under XDG_CONFIG_HOME on Linux");
+    {
+#if JUCE_LINUX
+      const auto dir = skin::userSkinsDir();
+      expect(dir.getFullPathName().endsWith("tone3000/skins"), dir.getFullPathName());
+#endif
+    }
+  }
+};
+
 struct LiteAdvisorTests : juce::UnitTest {
   LiteAdvisorTests() : juce::UnitTest("LiteAdvisor", "ui") {}
 
@@ -2948,6 +3003,7 @@ UiPrefsTests uiPrefsTests;
 Tone3000ClientTests tone3000ClientTests;
 ToneModelTests toneModelTests;
 ToneQueryTests toneQueryTests;
+SkinTests skinTests;
 LiteAdvisorTests liteAdvisorTests;
 ToneStepperTests toneStepperTests;
 ReadoutTests readoutTests;

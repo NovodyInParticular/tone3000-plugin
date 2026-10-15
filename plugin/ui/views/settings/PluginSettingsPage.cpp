@@ -3,6 +3,7 @@
 #include "InlineChrome.h"
 #include "core/Fonts.h"
 #include "core/Labels.h"
+#include "core/Skin.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
 #include "widgets/TextField.h"
@@ -86,6 +87,10 @@ private:
 PluginSettingsPage::PluginSettingsPage(Services& services)
     : FormStack(form::kSectionGap),
       services_(services),
+      skin_("Skin", "Changes the look, never the sound. Add your own by dropping a skin folder into the skins "
+                    "folder (see SKINS.md)."),
+      openSkins_("Open skins folder", FormButton::text(form::kBodyPx, false, theme::kLinkBlue)),
+      openSkinsBox_(openSkins_, static_cast<float>(openSkins_.preferredHeight())),
       infoBar_("Show Info Bar",
                "Shows help text on hover explaining what elements do, plus keyboard shortcuts and a CPU meter."),
       showGate_("Show Gate", "Reduces unwanted noise like hum and hiss while you're playing."),
@@ -165,6 +170,31 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       update_({}, FormButton::cta()),
       updateBox_(update_, static_cast<float>(update_.preferredHeight())),
       version_(juce::String(), form::kSmallPx, theme::kSubtle) {
+  // Skin. Rescanned on every page open, so a dropped-in folder shows up
+  // without a restart. Picking one writes the machine-wide pref; every open
+  // editor re-themes from it.
+  {
+    std::vector<SelectField::Option> options;
+    for (const auto& info : skin::available()) {
+      juce::String label = info.name;
+      if (!info.builtIn && info.author.isNotEmpty()) label << " (" << info.author << ")";
+      options.push_back({info.id, label, {}});
+    }
+    skinSelect_.setOptions(std::move(options));
+    const juce::String current = services_.prefs.get(UiPrefs::kSkin);
+    skinSelect_.setValue(current.isNotEmpty() ? current : juce::String(skin::kDefaultId));
+    skinSelect_.onChange = [this](const juce::String& id) { services_.prefs.set(UiPrefs::kSkin, id); };
+    skin_.content().setGap(form::kControlGap);
+    skin_.content().add(skinSelect_);
+    skin_.content().add(openSkinsBox_);
+    openSkins_.onClick = [] {
+      const auto dir = skin::userSkinsDir();
+      dir.createDirectory();
+      dir.revealToUser();
+    };
+    add(skin_);
+  }
+
   // Info Bar.
   infoBar_.onChange = [this](bool on) { services_.hints.setEnabled(on); };
   add(infoBar_);

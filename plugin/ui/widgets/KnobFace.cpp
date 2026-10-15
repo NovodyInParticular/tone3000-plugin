@@ -55,14 +55,30 @@ void fillCircle(juce::Graphics& g, juce::Point<float> c, float r, juce::ColourGr
   g.fillEllipse(c.x - r, c.y - r, 2 * r, 2 * r);
 }
 
+// Ring style (skins): a flat disc in the skin's knob colour with a thin
+// accent ring; the value arc does the talking.
+void drawRingBase(juce::Graphics& g, juce::Point<float> c, float s) {
+  fillCircle(g, c, kRimRadius * s, theme::kBlack);
+  g.setColour(theme::kBrandYellow.withAlpha(0.22f));
+  g.drawEllipse(c.x - kArcRadius * s, c.y - kArcRadius * s, 2 * kArcRadius * s, 2 * kArcRadius * s, kArcWidth * s);
+}
+void drawRingFace(juce::Graphics& g, juce::Point<float> c, float s) {
+  fillCircle(g, c, kShadowRadius * s, theme::kStyle.knobFace);
+  g.setColour(theme::kBorder);
+  g.drawEllipse(c.x - kShadowRadius * s, c.y - kShadowRadius * s, 2 * kShadowRadius * s, 2 * kShadowRadius * s,
+                juce::jmax(1.0f, 2.0f * s));
+}
+
 // Static base: never rotates, lighting stays put.
 void drawBase(juce::Graphics& g, juce::Point<float> c, float s) {
+  if (theme::kStyle.knob == theme::KnobStyle::ring) return drawRingBase(g, c, s);
   fillCircle(g, c, kRimRadius * s, kRim);
   fillCircle(g, c, kChannelRadius * s, theme::kBlack);
 }
 
 // Face stack: shadow ring, then the tone's three layers.
 void drawFace(juce::Graphics& g, juce::Point<float> c, float s, KnobTone tone) {
+  if (theme::kStyle.knob == theme::KnobStyle::ring) return drawRingFace(g, c, s);
   fillCircle(g, c, kShadowRadius * s, kRim);
   const auto& fills = tone == KnobTone::primary ? kPrimaryFills : kSecondaryFills;
   for (size_t i = 0; i < fills.size(); ++i) {
@@ -88,12 +104,13 @@ const StaticLayers& staticLayers(std::vector<StaticLayers>& cache, float boxWidt
   static constexpr size_t kMaxEntries = 32;
   const int devicePx = juce::roundToInt(boxWidth * pixelScale * 64.0f);  // 1/64 device px
   for (const auto& e : cache)
-    if (e.devicePx == devicePx && e.tone == tone) return e;
+    if (e.devicePx == devicePx && e.tone == tone && e.generation == theme::kGeneration) return e;
   if (cache.size() >= kMaxEntries) cache.clear();
 
   StaticLayers e;
   e.devicePx = devicePx;
   e.tone = tone;
+  e.generation = theme::kGeneration;
   const int side = static_cast<int>(std::ceil(boxWidth * pixelScale));
   const float s = boxWidth / 200.0f;
   const juce::Point<float> c(boxWidth / 2, boxWidth / 2);
@@ -137,6 +154,14 @@ void drawKnobFace(juce::Graphics& g, juce::Rectangle<float> box, float angleDeg,
   if (to - from >= 0.25f) {
     juce::Path arc;
     arc.addCentredArc(c.x, c.y, R(kArcRadius), R(kArcRadius), 0.0f, rad(from), rad(to), true);
+    // Skin glow: two wider translucent strokes under the arc, no blur.
+    if (const float glow = theme::kStyle.glow; glow > 0.0f) {
+      for (const auto [widen, alpha] : {std::pair{3.0f, 0.10f}, std::pair{1.9f, 0.22f}}) {
+        g.setColour(theme::kBrandYellow.withAlpha(alpha * glow));
+        g.strokePath(arc, juce::PathStrokeType(R(kArcWidth) * widen, juce::PathStrokeType::curved,
+                                               juce::PathStrokeType::rounded));
+      }
+    }
     g.setColour(theme::kBrandYellow);
     g.strokePath(arc, juce::PathStrokeType(R(kArcWidth), juce::PathStrokeType::curved,
                                            juce::PathStrokeType::butt));
@@ -149,6 +174,14 @@ void drawKnobFace(juce::Graphics& g, juce::Rectangle<float> box, float angleDeg,
   // whole faceplate uses), so the gradient stays vertical in screen space
   // wherever the pointer has turned to.
   const float a = rad(angleDeg);
+  if (theme::kStyle.knob == theme::KnobStyle::ring) {
+    // A short accent tick from the centre toward the value.
+    const juce::Point<float> inner(c.x + R(30.0f) * std::sin(a), c.y - R(30.0f) * std::cos(a));
+    const juce::Point<float> outer(c.x + R(70.0f) * std::sin(a), c.y - R(70.0f) * std::cos(a));
+    g.setColour(theme::kWhite);
+    g.drawLine({inner, outer}, juce::jmax(1.5f, R(9.0f)));
+    return;
+  }
   const juce::Point<float> p(c.x + R(kPointerOrbit) * std::sin(a), c.y - R(kPointerOrbit) * std::cos(a));
   const float pr = R(kPointerRadius);
   auto bevel = juce::ColourGradient::vertical(juce::Colour(rgb(0x040404)), p.y - pr,

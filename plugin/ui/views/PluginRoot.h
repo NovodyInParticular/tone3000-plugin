@@ -155,6 +155,8 @@ private:
   AppBanner banner_;
   juce::Component overlay_;
   ToastView toast_;
+  juce::Image backdrop_;  // the skin's chain backdrop, cached
+  int backdropGeneration_ = -1;
   LiteSuggestionView lite_;
   std::unique_ptr<UpdateNotice> updateNotice_;
   std::unique_ptr<ConnectionModal> connectionModal_;

@@ -1,0 +1,35 @@
+{
+  "name": "Vintage",
+  "author": "TONE3000 rig fork",
+  "version": "1.0",
+  "description": "Warm tolex browns, cream text and brass accents, like an old valve head under a lamp.",
+  "colors": {
+    "accent": "#E3A945",
+    "brandRed": "#C2452D",
+    "brandBlue": "#5C7FAE",
+    "link": "#E3A945",
+    "text": "#F4E7C8",
+    "black": "#1A110B",
+    "muted": "#F4E7C8A6",
+    "subtle": "#F4E7C870",
+    "highlight": "#F4E7C82E",
+    "gray": "#A38D6F",
+    "border": "#C9A77266",
+    "surface": "#2E2017",
+    "surfaceRaised": "#3A291D",
+    "segmentedTrack": "#C9A77240",
+    "panelBg": "#24180F"
+  },
+  "style": {
+    "knob": "classic",
+    "glow": 0.12,
+    "scanlines": 0,
+    "grid": 0,
+    "monoLabels": false,
+    "animations": true,
+    "glitchOnLoad": false,
+    "grille": "dots",
+    "knobFace": "#2A1C12",
+    "background": "#1A110B"
+  }
+}

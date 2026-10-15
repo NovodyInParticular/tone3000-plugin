@@ -1,6 +1,9 @@
 #include "RigTransfer.h"
 
+#include <algorithm>
 #include <map>
+
+#include "core/Skin.h"
 
 namespace t3k::ui {
 
@@ -125,7 +128,11 @@ void RigTransfer::importText(const juce::String& text, Done done) {
     }
     chain_.refresh(true);
     // The rig's look comes along when this machine has that skin.
-    if (const auto skin = r["skin"].toString(); skin.isNotEmpty()) prefs_.set(UiPrefs::kSkin, skin);
+    if (const auto id = r["skin"].toString(); id.isNotEmpty()) {
+      const auto skins = skin::available();
+      if (std::any_of(skins.begin(), skins.end(), [&](const skin::Info& i) { return i.id == id; }))
+        prefs_.set(UiPrefs::kSkin, id);
+    }
     juce::String message = "Loaded rig \"" + r["name"].toString() + "\".";
     if (const auto m = missingSentence(r["missing"], "missing (local files or tones that couldn't be fetched)");
         m.isNotEmpty())

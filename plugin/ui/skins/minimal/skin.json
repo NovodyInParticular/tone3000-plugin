@@ -1,0 +1,35 @@
+{
+  "name": "Minimal",
+  "author": "TONE3000 rig fork",
+  "version": "1.0",
+  "description": "Flat and high-contrast. No textures, no glow, no animation: the lightest on the CPU.",
+  "colors": {
+    "accent": "#FFFFFF",
+    "brandRed": "#FF453A",
+    "brandBlue": "#0A84FF",
+    "link": "#64D2FF",
+    "text": "#FFFFFF",
+    "black": "#000000",
+    "muted": "#FFFFFFB3",
+    "subtle": "#FFFFFF80",
+    "highlight": "#FFFFFF2E",
+    "gray": "#9A9A9A",
+    "border": "#FFFFFF66",
+    "surface": "#0E0E0E",
+    "surfaceRaised": "#141414",
+    "segmentedTrack": "#FFFFFF2E",
+    "panelBg": "#0A0A0A"
+  },
+  "style": {
+    "knob": "ring",
+    "glow": 0,
+    "scanlines": 0,
+    "grid": 0,
+    "monoLabels": false,
+    "animations": false,
+    "glitchOnLoad": false,
+    "grille": "dots",
+    "knobFace": "#000000",
+    "background": "#000000"
+  }
+}

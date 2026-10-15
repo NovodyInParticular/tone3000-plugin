@@ -150,7 +150,7 @@ juce::var TONE3000Processor::applyRig(const juce::String& text, const juce::var&
     const juce::String json = resolvedTones[juce::Identifier(juce::String(toneId))].toString();
     if (json.isEmpty() || json.length() > 1024 * 1024) return {};
     const juce::var tone = juce::JSON::parse(json);
-    if (!tone.isObject() || static_cast<int>(tone["id"]) != toneId || tone["models"].getArray() == nullptr ||
+    if (tone.getDynamicObject() == nullptr || static_cast<int>(tone["id"]) != toneId || tone["models"].getArray() == nullptr ||
         tone["models"].getArray()->isEmpty())
       return {};
     return tone;
@@ -189,7 +189,7 @@ juce::var TONE3000Processor::applyRig(const juce::String& text, const juce::var&
         juce::ValueTree cache("ModelCache");
         if (!b.local) {
           tone = resolved(b.toneId);
-          if (!tone.isObject()) {
+          if (tone.getDynamicObject() == nullptr) {
             missing.add(b.title.isNotEmpty() ? b.title : "Tone " + juce::String(b.toneId));
             continue;
           }
@@ -198,7 +198,7 @@ juce::var TONE3000Processor::applyRig(const juce::String& text, const juce::var&
           // Validated and stashed like a dropped file; a bad file is missing.
           juce::String stashError;
           const juce::var model = stashLocalModelBytes(b.embedded->fileName, b.embedded->bytes, stashError);
-          if (!model.isObject()) {
+          if (model.getDynamicObject() == nullptr) {
             missing.add(b.title.isNotEmpty() ? b.title : b.embedded->fileName);
             continue;
           }
@@ -226,7 +226,7 @@ juce::var TONE3000Processor::applyRig(const juce::String& text, const juce::var&
         bt.setProperty("activeModelId", modelId, nullptr);
         if (b.irBToneId > 0) {
           const juce::var toneB = resolved(b.irBToneId);
-          if (toneB.isObject()) {
+          if (toneB.getDynamicObject() != nullptr) {
             const int bModel = pickModel(toneB, b.irBModelId);
             // B is a one-model tone (see DualIr): keep only the chosen model.
             juce::var oneModel = toneB.clone();

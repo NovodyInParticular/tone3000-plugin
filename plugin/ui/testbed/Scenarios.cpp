@@ -108,6 +108,11 @@ const std::map<juce::String, Drive>& drives() {
          root.services().lite.switchToLite();
          wait(300);
        }},
+      {"skin-neural-chrome-fx-deck",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Time FX:", /*right=*/true);
+         wait(200);
+       }},
       {"chrome-spread-deck",
        [](PluginRoot& root, MockBackend&) {
          clickByHelp(root, "Offset:", /*right=*/true);
@@ -134,6 +139,7 @@ const std::map<juce::String, Drive>& drives() {
          wait(200);
        }},
       {"main-detail", [](PluginRoot&, MockBackend&) { wait(300); }},
+      {"skin-neural-main-detail", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"main-detail-browse", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"main-detail-ir", [](PluginRoot&, MockBackend&) { wait(300); }},
       {"main-detail-dual",

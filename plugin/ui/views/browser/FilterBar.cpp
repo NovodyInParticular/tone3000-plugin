@@ -267,7 +267,7 @@ void FilterBar::resized() {
 void FilterBar::paintOverChildren(juce::Graphics& g) {
   g.setColour(theme::kBorder);
   g.fillRect(divider_.translated(-scroller_->getViewPositionX(), 0));
-  paint::edgeFades(g, getLocalBounds().toFloat(), kBleed, juce::Colours::black);
+  paint::edgeFades(g, getLocalBounds().toFloat(), kBleed, theme::kBlack);
 }
 
 // Menus
