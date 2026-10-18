@@ -709,9 +709,10 @@ private:
 };
 
 RigView::RigView(Services& services)
-    : services_(services), spectrum_(services.backend, services.clock), cpu_(services.meters) {
+    : services_(services), spectrum_(services.backend, services.clock), cpu_(services.meters), toneEq_(services) {
   addAndMakeVisible(spectrum_);
   addAndMakeVisible(cpu_);
+  addAndMakeVisible(toneEq_);
   spectrum_.setRate(services_.prefs.get(UiPrefs::kSpectrumRate, "normal"));
   spectrum_.setInputTrace(services_.prefs.getBool(UiPrefs::kSpectrumInputTrace, false));
   spectrum_.onInputTraceChange = [this](bool on) { services_.prefs.setBool(UiPrefs::kSpectrumInputTrace, on); };
@@ -789,8 +790,11 @@ void RigView::resized() {
   area.removeFromTop(CpuMeter::kHeight + 4);
   const bool spectrumShown = services_.prefs.get(UiPrefs::kSpectrumRate, "normal") != "off";
   spectrum_.setVisible(spectrumShown);
+  toneEq_.setVisible(spectrumShown);
   if (spectrumShown) {
     spectrum_.setBounds(area.removeFromBottom(kSpectrumHeight));
+    toneEq_.setBounds(spectrum_.plotArea().translated(static_cast<float>(spectrum_.getX()),
+                                                      static_cast<float>(spectrum_.getY())).toNearestInt());
     area.removeFromBottom(14);
   }
   // Rows of modules, then the FX unit at the end of the (first) row.
@@ -819,6 +823,13 @@ void RigView::resized() {
     if (row == 0)
       fx_->setBounds(juce::roundToInt(x), y, juce::roundToInt(widthOf(Kind::fx) * scale), h);
   }
+}
+
+std::vector<juce::Component*> RigView::modules() const {
+  std::vector<juce::Component*> out;
+  for (const auto& m : modules_) out.push_back(m.get());
+  if (fx_ != nullptr) out.push_back(fx_.get());
+  return out;
 }
 
 void RigView::paint(juce::Graphics& g) {

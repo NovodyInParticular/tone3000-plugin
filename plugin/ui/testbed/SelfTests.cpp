@@ -46,6 +46,7 @@
 #include "views/gallery/GalleryGeometry.h"
 #include "views/gallery/GalleryTile.h"
 #include "views/rig/RigView.h"
+#include "views/rig/ToneEqOverlay.h"
 #include "widgets/CpuMeter.h"
 #include "widgets/HoverTip.h"
 #include "widgets/Avatar.h"
@@ -2605,11 +2606,7 @@ struct RigBypassTests : juce::UnitTest {
     }));
     expect(rig != nullptr, "the rig view shows");
     if (rig == nullptr) return;
-    juce::Component* pedal = nullptr;  // the leftmost module: blk-1, the pedal
-    for (auto* c : rig->getChildren())
-      if (dynamic_cast<OutputSpectrum*>(c) == nullptr && dynamic_cast<CpuMeter*>(c) == nullptr
-          && (pedal == nullptr || c->getX() < pedal->getX()))
-        pedal = c;
+    juce::Component* pedal = rig->modules().empty() ? nullptr : rig->modules().front();  // blk-1
     expect(pedal != nullptr);
     if (pedal == nullptr) return;
     auto enabled = [&] {
@@ -2640,10 +2637,7 @@ struct RigBypassTests : juce::UnitTest {
     expect(enabled());
 
     // Modules left to right: pedal, amp, cab (the Time FX unit is last).
-    std::vector<juce::Component*> modules;
-    for (auto* c : rig->getChildren())
-      if (dynamic_cast<OutputSpectrum*>(c) == nullptr && dynamic_cast<CpuMeter*>(c) == nullptr) modules.push_back(c);
-    std::sort(modules.begin(), modules.end(), [](auto* a, auto* b) { return a->getX() < b->getX(); });
+    const auto modules = rig->modules();
     expect(modules.size() == 4);
     if (modules.size() != 4) return;
     const auto tip = [&]() -> juce::Component* {
@@ -2729,10 +2723,7 @@ struct RigStepTests : juce::UnitTest {
     }));
     expect(rig != nullptr);
     if (rig == nullptr) return;
-    std::vector<juce::Component*> modules;
-    for (auto* c : rig->getChildren())
-      if (dynamic_cast<OutputSpectrum*>(c) == nullptr && dynamic_cast<CpuMeter*>(c) == nullptr) modules.push_back(c);
-    std::sort(modules.begin(), modules.end(), [](auto* a, auto* b) { return a->getX() < b->getX(); });
+    const auto modules = rig->modules();
     expect(modules.size() == 4);
     if (modules.size() != 4) return;
     std::string opened;
@@ -2764,6 +2755,82 @@ struct RigStepTests : juce::UnitTest {
     expectEquals(backend.lastSwapIndex, 1);
     expect(opened.empty(), "the arrow opened the block");
     expectEquals(juce::String(stepper.focusBlock()), juce::String("blk-2"));
+    window.setVisible(false);
+  }
+};
+
+// The tone stack over the rig view's spectrum: its handles drive the same
+// parameters as the Bass / Middle / Treble knobs, and follow them back.
+struct RigToneEqTests : juce::UnitTest {
+  RigToneEqTests() : juce::UnitTest("Rig view tone EQ", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    beginTest("the knob-to-dB mapping matches the processor's voicing");
+    expectWithinAbsoluteError(ToneEqOverlay::gainDb(0, 1.0f), 20.0f, 1e-4f);   // bass ±20
+    expectWithinAbsoluteError(ToneEqOverlay::gainDb(1, 0.0f), -15.0f, 1e-4f);  // mid ±15
+    expectWithinAbsoluteError(ToneEqOverlay::gainDb(2, 0.5f), 0.0f, 1e-4f);    // 5 = flat
+    expectWithinAbsoluteError(ToneEqOverlay::normalisedFor(2, 4.0f), 0.7f, 1e-4f);  // treble 2 dB/step
+
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("rig-neural");
+    if (scenario == nullptr) {
+      expect(false, "rig-neural scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("rig tone eq", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto* peer = host.getPeer();
+    auto& root = host.pluginRoot();
+    expect(peer != nullptr);
+    if (peer == nullptr) return;
+    auto* rig = dynamic_cast<RigView*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<RigView*>(&c) != nullptr && c.isShowing();
+    }));
+    expect(rig != nullptr);
+    if (rig == nullptr) return;
+    auto& eqView = rig->toneEq();
+    auto* bass = backend.parameter("toneBass");
+    expect(bass != nullptr);
+    if (bass == nullptr) return;
+    bass->setValueNotifyingHost(0.5f);
+    pump(50);
+
+    auto time = juce::Time::currentTimeMillis();
+    const auto at = [&](juce::Point<float> local, bool down) {
+      const auto pos = peer->getComponent().getLocalPoint(&eqView, local);
+      peer->handleMouseEvent(juce::MouseInputSource::InputSourceType::mouse, pos,
+                             down ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(), 0.0f, 0.0f, ++time);
+      pump(10);
+    };
+
+    beginTest("dragging the bass handle up raises the Bass parameter");
+    const auto start = eqView.handlePosition(0);
+    at(start, true);
+    for (int step = 1; step <= 10; ++step) at(start.translated(0.0f, -2.0f * static_cast<float>(step)), true);
+    at(start.translated(0.0f, -20.0f), false);
+    expect(bass->getValue() > 0.55f, "Bass went up: " + juce::String(bass->getValue()));
+    expect(eqView.handlePosition(0).y < start.y, "the handle followed the drag");
+    expect(eqView.responseAt(60.0) > 1.0f, "the curve boosts the lows");
+
+    beginTest("a knob change moves the handle and the curve");
+    bass->setValueNotifyingHost(0.2f);  // the Bass knob at 2: -12 dB
+    pump(100);
+    expect(eqView.handlePosition(0).y > start.y, "the handle dropped below 0 dB");
+    expect(eqView.responseAt(60.0) < -6.0f, "the curve cuts the lows");
+
+    beginTest("a double-click on a handle sets its band flat");
+    const auto h = eqView.handlePosition(0);
+    for (int press = 0; press < 2; ++press) {
+      at(h, true);
+      at(h, false);
+    }
+    expectWithinAbsoluteError(bass->getValue(), 0.5f, 1e-3f);
     window.setVisible(false);
   }
 };
@@ -3245,6 +3312,7 @@ BlockSizeToggleTests blockSizeToggleTests;
 MidiMapCommitTests midiMapCommitTests;
 RigBypassTests rigBypassTests;
 RigStepTests rigStepTests;
+RigToneEqTests rigToneEqTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;

@@ -18,6 +18,7 @@
 
 #include "services/Services.h"
 #include "widgets/CpuMeter.h"
+#include "views/rig/ToneEqOverlay.h"
 #include "widgets/OutputSpectrum.h"
 
 namespace t3k::ui {
@@ -35,6 +36,10 @@ public:
   void paint(juce::Graphics& g) override;
   void resized() override;
 
+  // The gear in chain order, the Time FX unit last (tests drive these).
+  std::vector<juce::Component*> modules() const;
+  ToneEqOverlay& toneEq() { return toneEq_; }
+
   class Module;
 
 private:
@@ -48,6 +53,7 @@ private:
   std::unique_ptr<Module> fx_;
   OutputSpectrum spectrum_;
   CpuMeter cpu_;
+  ToneEqOverlay toneEq_;  // over the spectrum's plot area
   bool stereo_ = false;
   int rowCount_ = 1;
 };
