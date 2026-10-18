@@ -37,7 +37,14 @@ public:
   std::string loadTone(const juce::String&, const std::string&, const juce::var& = {}) override { return {}; }
   juce::var loadLocalTonePath(const juce::File&, const std::string&) override;
   juce::var loadLocalToneUrls(const juce::Array<juce::URL>&, const std::string&) override;
-  bool swapTone(const std::string&, const juce::String&, const juce::var& = {}) override { return true; }
+  // Records the last swap (tests check where a step landed).
+  bool swapTone(const std::string& blockId, const juce::String&, const juce::var& browse = {}) override {
+    lastSwapBlock = blockId;
+    lastSwapIndex = browse.isObject() ? static_cast<int>(browse.getProperty("index", -1)) : -1;
+    return true;
+  }
+  std::string lastSwapBlock;
+  int lastSwapIndex = -1;
   void prefetchModel(const juce::String&) override {}
   bool setBlockSecondIr(const std::string&, const juce::String&) override { return true; }
   juce::var setBlockSecondIrFile(const std::string&, const juce::File&) override { return {}; }

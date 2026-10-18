@@ -46,6 +46,7 @@
 #include "views/gallery/GalleryGeometry.h"
 #include "views/gallery/GalleryTile.h"
 #include "views/rig/RigView.h"
+#include "widgets/CpuMeter.h"
 #include "widgets/HoverTip.h"
 #include "widgets/Avatar.h"
 #include "widgets/ChromeTextButton.h"
@@ -2699,6 +2700,74 @@ struct RigBypassTests : juce::UnitTest {
   }
 };
 
+// The rig view's prev / next arrows step a module's tone through its results, like the
+// gallery's step pill, without opening the block.
+struct RigStepTests : juce::UnitTest {
+  RigStepTests() : juce::UnitTest("Rig view stepping", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("rig-neural-browse");
+    if (scenario == nullptr) {
+      expect(false, "rig-neural-browse scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("rig step", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto* peer = host.getPeer();
+    auto& root = host.pluginRoot();
+    expect(peer != nullptr);
+    if (peer == nullptr) return;
+    auto* rig = dynamic_cast<RigView*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<RigView*>(&c) != nullptr && c.isShowing();
+    }));
+    expect(rig != nullptr);
+    if (rig == nullptr) return;
+    std::vector<juce::Component*> modules;
+    for (auto* c : rig->getChildren())
+      if (dynamic_cast<OutputSpectrum*>(c) == nullptr && dynamic_cast<CpuMeter*>(c) == nullptr) modules.push_back(c);
+    std::sort(modules.begin(), modules.end(), [](auto* a, auto* b) { return a->getX() < b->getX(); });
+    expect(modules.size() == 4);
+    if (modules.size() != 4) return;
+    std::string opened;
+    rig->onOpenBlock = [&](const std::string& id) { opened = id; };
+    auto& stepper = root.services().stepper;
+    auto* amp = modules[1];
+    const float k = static_cast<float>(amp->getHeight()) / 170.0f;
+    // The amp's arrows sit at the ends of its name plate (11..225 x 11..45).
+    const auto click = [&](juce::Point<float> nominal) {
+      const auto pos = peer->getComponent().getLocalPoint(amp, nominal * k);
+      const auto now = juce::Time::currentTimeMillis();
+      using Type = juce::MouseInputSource::InputSourceType;
+      peer->handleMouseEvent(Type::mouse, pos, juce::ModifierKeys::leftButtonModifier, 0.0f, 0.0f, now);
+      peer->handleMouseEvent(Type::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f, now + 1);
+      pump(60);
+    };
+
+    beginTest("the first result's prev arrow is dead and opens nothing");
+    auto cursor = stepper.cursor("blk-2");
+    expect(cursor.has_value() && cursor->position == 1 && !cursor->canPrev && cursor->canNext);
+    click({23.0f, 28.0f});
+    cursor = stepper.cursor("blk-2");
+    expect(cursor.has_value() && cursor->position == 1, "stepped back off the first result");
+    expect(opened.empty(), "the dead arrow opened the block");
+
+    beginTest("the next arrow steps the amp to its next result and opens nothing");
+    click({213.0f, 28.0f});
+    expect(LiveScenario::until([&] { return backend.lastSwapBlock == "blk-2"; }), "no swap reached the amp");
+    expectEquals(backend.lastSwapIndex, 1);
+    expect(opened.empty(), "the arrow opened the block");
+    expectEquals(juce::String(stepper.focusBlock()), juce::String("blk-2"));
+    window.setVisible(false);
+  }
+};
+
 // Committing a typed CC number swaps the listening row for a mapping row of
 // the same height. The form host only re-flows on a height change, so the
 // card has to place its new rows itself or they sit at 0×0 and the card
@@ -3175,6 +3244,7 @@ ChainCrossLaneDragTests chainCrossLaneDragTests;
 BlockSizeToggleTests blockSizeToggleTests;
 MidiMapCommitTests midiMapCommitTests;
 RigBypassTests rigBypassTests;
+RigStepTests rigStepTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;

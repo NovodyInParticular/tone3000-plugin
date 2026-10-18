@@ -143,7 +143,7 @@ void grille(juce::Graphics& g, juce::Rectangle<float> area) {
 
 // One piece of gear. Repaints itself on its block's meter (pulse) and on a
 // new tone (flicker).
-class RigView::Module : public juce::Component, private MeterStore::Listener {
+class RigView::Module : public juce::Component, private MeterStore::Listener, private ToneStepper::Listener {
 public:
   Module(Services& services, Kind kind, const ChainItem* item)
       : services_(services), kind_(kind) {
@@ -151,8 +151,12 @@ public:
     else setHelpText("Time FX: modulation, delay and reverb. Right-click the Time FX group on the plate to edit.");
     setMouseCursor(item != nullptr ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
     services_.meters.addListener(this);
+    services_.stepper.addListener(this);
   }
-  ~Module() override { services_.meters.removeListener(this); }
+  ~Module() override {
+    services_.stepper.removeListener(this);
+    services_.meters.removeListener(this);
+  }
 
   void setItem(const ChainItem& item) {
     const bool newTone = item_.blockId == item.blockId && (item_.tone.id != item.tone.id || item_.activeModelId != item.activeModelId);
@@ -160,6 +164,7 @@ public:
     item_ = item;
     if (dragKnob_ >= 0) knobValue(knobs()[static_cast<size_t>(dragKnob_)]) = held;  // the drag owns it
     bypassed_ = {};
+    cursor_ = kind_ == Kind::fx ? std::nullopt : services_.stepper.cursor(item_.blockId);
     titleCut_ = kind_ != Kind::fx && isCut(titleText(), titleSpot());
     setHelpText(item.tone.title + ": click to open the block.");
     if (newTone && theme::kStyle.glitchOnLoad && theme::animate())
@@ -238,6 +243,13 @@ public:
       return;
     }
     if (kind_ == Kind::fx || !e.mouseWasClicked()) return;
+    if (const int arrow = arrowAt(e.position); arrow != 0) {
+      if (arrowEnabled(arrow)) {
+        services_.stepper.setFocusBlock(item_.blockId);
+        services_.stepper.step(item_.blockId, arrow);
+      }
+      return;  // a dead arrow is still not a click on the module
+    }
     if (kind_ == Kind::pedal && overFootswitch(e.position)) {
       // Bypass in place, like a real stomp; the chain poll confirms it.
       item_.params.enabled = !item_.params.enabled;
@@ -251,10 +263,19 @@ public:
   void mouseMove(const juce::MouseEvent& e) override {
     const bool over = kind_ == Kind::pedal && overFootswitch(e.position);
     const int knob = kind_ == Kind::fx ? -1 : knobAt(e.position);
-    if (over != overSwitch_ || knob != hoverKnob_) {
+    const int arrow = kind_ == Kind::fx ? 0 : arrowAt(e.position);
+    if (over != overSwitch_ || knob != hoverKnob_ || arrow != hoverArrow_) {
       overSwitch_ = over;
       hoverKnob_ = knob;
-      if (knob >= 0) {
+      if (arrow != hoverArrow_) {
+        hoverArrow_ = arrow;
+        bypassed_ = {};
+        repaint();  // the hovered arrow lights up
+      }
+      if (arrow != 0 && cursor_) {
+        setHelpText(juce::String(arrow < 0 ? "Previous tone" : "Next tone") + " from the results this one came from ("
+                    + juce::String(cursor_->position) + " of " + juce::String(cursor_->total) + ").");
+      } else if (knob >= 0) {
         const auto& k = knobs()[static_cast<size_t>(knob)];
         setHelpText(juce::String(k.name) + ": drag up or down to adjust. Shift+drag: fine · double-click: reset.");
       } else {
@@ -278,6 +299,7 @@ public:
   void mouseExit(const juce::MouseEvent&) override {
     hoverSince_ = 0;
     hoverKnob_ = -1;
+    hoverArrow_ = 0;
     tip_.hide();
     if (dragKnob_ < 0) knobTip_.hide();
     if (marqueeX_ != 0.0f) {
@@ -397,12 +419,78 @@ private:
     showKnobValue(index);
   }
 
+  // ‹ › for stepping the block through its results (ToneStepper): beside
+  // the name on an amp or cab, a "‹ 3/40 ›" row under it on a pedal. Only
+  // while the block has a browse context. Nominal units.
+  static constexpr float kArrowW = 16.0f;
+
+  std::pair<juce::Rectangle<float>, juce::Rectangle<float>> arrowBoxes() const {
+    const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(kind_)), static_cast<float>(kModuleHeight)).reduced(1.0f);
+    juce::Rectangle<float> row;
+    switch (kind_) {
+      case Kind::pedal: row = box.withTrimmedTop(110).withHeight(18).reduced(10, 0); break;
+      case Kind::amp: row = box.reduced(10).removeFromTop(34).reduced(4, 0); break;
+      case Kind::cab: row = box.reduced(8).removeFromBottom(26); break;
+      case Kind::fx: return {};
+    }
+    return {row.withWidth(kArrowW), row.withTrimmedLeft(row.getWidth() - kArrowW)};
+  }
+
+  // -1 / +1 for the arrow under a component point, 0 for none.
+  int arrowAt(juce::Point<float> p) const {
+    if (!cursor_) return 0;
+    const auto local = p / scale();
+    const auto [prev, next] = arrowBoxes();
+    if (prev.expanded(3.0f).contains(local)) return -1;
+    if (next.expanded(3.0f).contains(local)) return 1;
+    return 0;
+  }
+
+  bool arrowEnabled(int arrow) const {
+    return cursor_ && !cursor_->busy && (arrow < 0 ? cursor_->canPrev : cursor_->canNext);
+  }
+
+  void arrows(juce::Graphics& g) {
+    if (!cursor_) return;
+    const auto [prev, next] = arrowBoxes();
+    for (const int arrow : {-1, 1}) {
+      const auto r = (arrow < 0 ? prev : next).withSizeKeepingCentre(6.0f, 10.0f);
+      juce::Path chevron;
+      chevron.startNewSubPath(arrow < 0 ? r.getRight() : r.getX(), r.getY());
+      chevron.lineTo(arrow < 0 ? r.getX() : r.getRight(), r.getCentreY());
+      chevron.lineTo(arrow < 0 ? r.getRight() : r.getX(), r.getBottom());
+      const bool live = arrowEnabled(arrow);
+      g.setColour(!live ? theme::kGray.withAlpha(0.35f) : hoverArrow_ == arrow ? theme::kBrandYellow : theme::kWhite);
+      g.strokePath(chevron, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    if (kind_ == Kind::pedal) {
+      g.setColour(cursor_->busy ? theme::kBrandYellow : theme::kSubtle);
+      g.setFont(label(10));
+      g.drawText(juce::String(cursor_->position) + "/" + juce::String(cursor_->total),
+                 prev.getUnion(next).reduced(kArrowW, 0), juce::Justification::centred, false);
+    }
+  }
+
+  void stepperChanged() override {
+    if (kind_ == Kind::fx) return;
+    auto next = services_.stepper.cursor(item_.blockId);
+    const bool same = next.has_value() == cursor_.has_value()
+                      && (!next || (next->position == cursor_->position && next->total == cursor_->total
+                                    && next->canPrev == cursor_->canPrev && next->canNext == cursor_->canNext
+                                    && next->busy == cursor_->busy));
+    if (same) return;
+    cursor_ = next;
+    titleCut_ = isCut(titleText(), titleSpot());
+    bypassed_ = {};
+    repaint();
+  }
+
   TitleSpot titleSpot() const {
     const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(kind_)), static_cast<float>(kModuleHeight)).reduced(1.0f);
     switch (kind_) {
       case Kind::pedal: return {box.withTrimmedTop(74).withHeight(34).reduced(6, 0), 2};
-      case Kind::amp: return {box.reduced(10).removeFromTop(34).reduced(6, 2), 2};
-      case Kind::cab: return {box.reduced(8).removeFromBottom(26), 1};
+      case Kind::amp: return {box.reduced(10).removeFromTop(34).reduced(cursor_ ? kArrowW + 4 : 6, 2), 2};
+      case Kind::cab: return {box.reduced(8).removeFromBottom(26).reduced(cursor_ ? kArrowW : 0, 0), 1};
       case Kind::fx: break;
     }
     return {};
@@ -521,6 +609,7 @@ private:
         led(g, {box.getCentreX(), box.getY() + 14}, enabled);
         for (const auto& k : knobs()) miniKnob(g, k.centre, k.size, static_cast<float>(knobValue(k)), k.name);
         title(g);
+        arrows(g);
         footswitch(g, enabled);
         if (showsSize()) sizeBadge(g, {box.getX() + 7, box.getY() + 7}, isSlimSizeFull(item_.params.slimSize));
         break;
@@ -532,6 +621,7 @@ private:
         g.setColour(theme::kBlack.withAlpha(0.55f));
         g.fillRoundedRectangle(plate, 5.0f);
         title(g);
+        arrows(g);
         // Knobs.
         for (const auto& k : knobs()) miniKnob(g, k.centre, k.size, static_cast<float>(knobValue(k)), k.name);
         if (showsSize()) sizeBadge(g, {box.getX() + 12, box.getY() + 109}, isSlimSizeFull(item_.params.slimSize));
@@ -562,6 +652,7 @@ private:
         body(g, box, enabled && item_.loaded);
         grille(g, box.reduced(10).withTrimmedBottom(32));
         title(g);
+        arrows(g);
         if (item_.dualIr && item_.dualIr->hasB) {
           g.setColour(theme::kBrandYellow);
           g.setFont(label(10, true));
@@ -613,6 +704,8 @@ private:
   double dragStartValue_ = 0.0;
   bool fineDrag_ = false;
   HoverTip knobTip_;
+  std::optional<ToneStepper::Cursor> cursor_;  // set while the block has results to step
+  int hoverArrow_ = 0;
 };
 
 RigView::RigView(Services& services)
