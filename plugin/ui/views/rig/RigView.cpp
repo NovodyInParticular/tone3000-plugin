@@ -16,7 +16,7 @@ namespace {
 
 constexpr int kPad = 24;
 constexpr int kGap = 26;          // between modules (the cable)
-constexpr int kSpectrumHeight = 96;
+constexpr int kSpectrumHeight = 116;
 constexpr int kGlitchMs = 220;
 constexpr int kModuleHeight = 170;  // every module is drawn at this height, then scaled
 // Long names: the full name floats under the module after this hover, and

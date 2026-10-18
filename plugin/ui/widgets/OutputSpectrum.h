@@ -24,7 +24,15 @@ public:
 
   static constexpr const char* kOutputId = "output";
 
+  // Where the trace is plotted, and the axes (20 Hz..20 kHz log across,
+  // -90..0 dB up), in this component's coordinates.
+  juce::Rectangle<float> plotArea() const;
+  float xOf(double hz) const;
+  float yOf(float db) const;
+
 private:
+  void paintBackdrop(juce::Graphics& g) const;
+
   Backend& backend_;
   UiClock& clock_;
   std::unique_ptr<SpectrumFeed> feed_;
