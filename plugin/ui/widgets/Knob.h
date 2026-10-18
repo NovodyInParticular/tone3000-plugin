@@ -4,11 +4,13 @@
 //
 // Interaction conventions (matching typical plugin UX):
 // - Drag vertically to adjust; hold Shift for 8x finer control (mid-drag too).
-// - The label swaps to a live value readout while dragging (debounced so a
-//   quick tap never flashes it) and lingers briefly after release.
-// - Double-click opens inline text entry in real units (Enter commits,
-//   Escape cancels, blur commits).
-// - Alt/Option-click resets to the default value (when one is declared).
+// - The label swaps to a live value readout while dragging or hovering the
+//   face (debounced so a quick tap or a passing pointer never flashes it)
+//   and lingers briefly after release.
+// - Double-click on the face resets to the default value (when one is
+//   declared; otherwise it types, as below). Alt/Option-click also resets.
+// - Double-click on the label opens inline text entry in real units (Enter
+//   commits, Escape cancels, blur commits).
 // - No scroll-wheel support on purpose: knobs sit inside the horizontally
 //   scrolling chain view.
 // On a touch screen: double tap resets, tapping the label opens the editor,
@@ -103,6 +105,8 @@ public:
   void mouseDrag(const juce::MouseEvent& e) override;
   void mouseUp(const juce::MouseEvent& e) override;
   void mouseDoubleClick(const juce::MouseEvent& e) override;
+  void mouseMove(const juce::MouseEvent& e) override;
+  void mouseExit(const juce::MouseEvent& e) override;
   bool keyPressed(const juce::KeyPress& key) override;
   std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
@@ -132,6 +136,7 @@ private:
   float emitted_ = 0.0f;  // last value emitted (detent-snapped)
   bool dragging_ = false;
   bool readoutVisible_ = false;
+  bool hoverFace_ = false;  // the pointer rests on the face (readout shows)
   float lastY_ = 0.0f;
   juce::Point<float> pressOrigin_;
   bool pressTravelled_ = false;

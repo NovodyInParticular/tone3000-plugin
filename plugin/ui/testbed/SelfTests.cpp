@@ -2813,6 +2813,28 @@ struct KnobReadoutTests : juce::UnitTest {
     pump(400);  // past the hold
     expect(floatingReadout(root, *knob) == nullptr);
     expectEquals(sides(host.createComponentSnapshot(host.getLocalBounds())), idle);
+
+    beginTest("resting the pointer on the face shows the value; moving off hides it");
+    at(face.translated(0.0f, -1.0f), false);
+    at(face, false);
+    pump(300);
+    expect(floatingReadout(root, *knob) != nullptr, "hover readout");
+    at(face.translated(static_cast<float>(knob->getWidth()), 0.0f), false);  // beside the knob
+    pump(400);
+    expect(floatingReadout(root, *knob) == nullptr, "readout left after the pointer did");
+
+    beginTest("a double-click on the face resets to the default and opens no editor");
+    expect(juce::exactlyEqual(knob->value(), 0.0f));
+    const auto pos = peer->getComponent().getLocalPoint(knob, face);
+    for (int press = 0; press < 2; ++press) {
+      using Type = juce::MouseInputSource::InputSourceType;
+      peer->handleMouseEvent(Type::mouse, pos, juce::ModifierKeys::leftButtonModifier, 0.0f, 0.0f, ++time);
+      peer->handleMouseEvent(Type::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f, ++time);
+    }
+    pump(100);
+    expect(knob->value() > 0.0f, "back at the default");
+    expect(drive::find(*knob, [](juce::Component& c) { return dynamic_cast<TextField*>(&c) != nullptr; }) == nullptr,
+           "the type-in editor opened");
     window.setVisible(false);
   }
 };

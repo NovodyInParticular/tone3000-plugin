@@ -218,7 +218,7 @@ void Knob::mouseDrag(const juce::MouseEvent& e) {
 void Knob::endDrag() {
   if (!dragging_) return;
   dragging_ = false;
-  readoutTimer_.start(kReadoutHoldMs, [this] { setReadoutVisible(false); });
+  if (!hoverFace_) readoutTimer_.start(kReadoutHoldMs, [this] { setReadoutVisible(false); });
   if (onDragStateChange) onDragStateChange(false);
 }
 
@@ -235,9 +235,34 @@ void Knob::mouseUp(const juce::MouseEvent& e) {
 
 void Knob::mouseDoubleClick(const juce::MouseEvent& e) {
   // A touch double tap resets (see mouseDown); it must not also open the editor.
-  if (e.source.isTouch() || !faceBounds().contains(e.getPosition())) return;
+  if (e.source.isTouch()) return;
+  const bool onFace = faceBounds().contains(e.getPosition());
+  if (!onFace && !labelBounds().contains(e.getPosition())) return;
   endDrag();
+  if (onFace && resetToDefault()) {
+    setReadoutVisible(true);
+    if (!hoverFace_) readoutTimer_.start(kKeyReadoutMs, [this] { setReadoutVisible(false); });
+    return;
+  }
   openEditor();
+}
+
+// Resting the pointer on the face shows the value, like a drag does.
+void Knob::mouseMove(const juce::MouseEvent& e) {
+  if (e.source.isTouch()) return;
+  const bool over = faceBounds().contains(e.getPosition());
+  if (over == hoverFace_) return;
+  hoverFace_ = over;
+  if (dragging_) return;
+  if (over) readoutTimer_.start(kReadoutShowMs, [this] { setReadoutVisible(true); });
+  else readoutTimer_.start(kReadoutHoldMs, [this] { setReadoutVisible(false); });
+}
+
+void Knob::mouseExit(const juce::MouseEvent& e) {
+  if (!hoverFace_) return;
+  hoverFace_ = false;
+  if (!dragging_) readoutTimer_.start(kReadoutHoldMs, [this] { setReadoutVisible(false); });
+  juce::ignoreUnused(e);
 }
 
 // Keyboard / screen reader
