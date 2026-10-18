@@ -48,12 +48,32 @@ private:
   void prefChanged(const juce::String& key) override;
   void rebuild();
 
+  // A cable between two neighbouring modules (or into the FX unit), and its
+  // pulse: a dot travelling along it at a speed and brightness set by the
+  // upstream module's output level. Cables touching a bypassed module stay
+  // dim and still.
+  struct Cable {
+    Module* from = nullptr;
+    Module* to = nullptr;
+    float phase = 0.0f;  // 0..1 along the cable
+    bool drawn = false;  // a pulse was painted last frame
+  };
+  void layoutCables();
+  juce::Rectangle<int> cableArea(const Cable& c) const;
+  juce::Rectangle<int> pulseArea(const Cable& c) const;  // the dot, with its glow
+  bool cableLive(const Cable& c) const;
+  float cableLevel(const Cable& c) const;
+
   Services& services_;
   std::vector<std::unique_ptr<Module>> modules_;
   std::unique_ptr<Module> fx_;
   OutputSpectrum spectrum_;
   CpuMeter cpu_;
   ToneEqOverlay toneEq_;  // over the spectrum's plot area
+  std::vector<Cable> cables_;
+  juce::uint32 lastTickMs_ = 0;
+  float pulseDt_ = 0.0f;     // time gathered since the pulses last moved
+  bool pulseFrame_ = false;  // pulses move every other tick
   bool stereo_ = false;
   int rowCount_ = 1;
 };

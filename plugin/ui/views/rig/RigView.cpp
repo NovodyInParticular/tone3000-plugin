@@ -28,6 +28,10 @@ constexpr float kMarqueeRestS = 1.0f;
 // Module knobs: value per nominal unit of vertical drag (Shift: 8x finer).
 constexpr float kKnobDragPerUnit = 0.006f;
 constexpr float kKnobFine = 8.0f;
+// Cable pulses: trips along a cable per second at silence and at full
+// level, and the level under which a cable shows no pulse.
+constexpr float kPulseMinRate = 0.6f, kPulseMaxRate = 3.0f;
+constexpr float kPulseFloor = 0.08f;
 
 enum class Kind { pedal, amp, cab, fx };
 
@@ -174,6 +178,9 @@ public:
   }
   const std::string& blockId() const { return item_.blockId; }
   Kind kind() const { return kind_; }
+  bool isBypassed() const { return bypassed(); }
+  // 0..1: the block's output level on the meters' -60..0 dB scale.
+  float level() const { return kind_ == Kind::fx ? 0.0f : outLevel(); }
   std::function<void(const std::string&)> onOpen;
 
   void advance() {
@@ -789,6 +796,63 @@ void RigView::prefChanged(const juce::String& key) {
 void RigView::tick() {
   for (auto& m : modules_) m->advance();
   if (fx_ != nullptr) fx_->advance();
+  const auto now = juce::Time::getMillisecondCounter();
+  const float dt = lastTickMs_ == 0 ? 0.0f : juce::jmin(0.1f, static_cast<float>(now - lastTickMs_) / 1000.0f);
+  lastTickMs_ = now;
+  if (!theme::animate()) return;
+  // Pulses move at half the UI rate: each repainted spot costs a blit of
+  // its own, and small dots read smoothly at 15 fps.
+  pulseDt_ += dt;
+  if ((pulseFrame_ = !pulseFrame_)) return;
+  const float step = pulseDt_;
+  pulseDt_ = 0.0f;
+  // Pulses: only cables with something to show (or to clear) repaint.
+  for (auto& c : cables_) {
+    const bool show = cableLive(c) && cableLevel(c) >= kPulseFloor;
+    if (!show && !c.drawn) continue;
+    // Only the dot's old and new spots repaint, not the whole cable.
+    repaint(pulseArea(c));
+    if (show) {
+      const float level = cableLevel(c);
+      c.phase = std::fmod(c.phase + step * (kPulseMinRate + (kPulseMaxRate - kPulseMinRate) * level), 1.0f);
+      repaint(pulseArea(c));
+    }
+  }
+}
+
+juce::Rectangle<int> RigView::pulseArea(const Cable& c) const {
+  const auto a = c.from->getBounds(), b = c.to->getBounds();
+  const float x = static_cast<float>(a.getRight()) + c.phase * static_cast<float>(b.getX() - a.getRight());
+  return juce::Rectangle<float>(16.0f, 16.0f).withCentre({x, static_cast<float>(a.getCentreY())}).getSmallestIntegerContainer();
+}
+
+bool RigView::cableLive(const Cable& c) const {
+  return c.from != nullptr && c.to != nullptr && !c.from->isBypassed() && !c.to->isBypassed();
+}
+
+float RigView::cableLevel(const Cable& c) const { return c.from != nullptr ? c.from->level() : 0.0f; }
+
+juce::Rectangle<int> RigView::cableArea(const Cable& c) const {
+  const auto a = c.from->getBounds(), b = c.to->getBounds();
+  return juce::Rectangle<int>(a.getRight(), a.getCentreY() - 8, juce::jmax(0, b.getX() - a.getRight()), 16);
+}
+
+void RigView::layoutCables() {
+  std::vector<Cable> next;
+  for (int row = 0; row < rowCount_; ++row) {
+    Module* prev = nullptr;
+    for (auto& m : modules_) {
+      if (static_cast<int>(m->getProperties()["row"]) != row) continue;
+      if (prev != nullptr) next.push_back({prev, m.get()});
+      prev = m.get();
+    }
+    if (row == 0 && prev != nullptr && fx_ != nullptr) next.push_back({prev, fx_.get()});
+  }
+  // Keep each surviving cable's phase, so a relayout doesn't restart pulses.
+  for (auto& c : next)
+    for (const auto& old : cables_)
+      if (old.from == c.from && old.to == c.to) c.phase = old.phase;
+  cables_ = std::move(next);
 }
 
 void RigView::chainChanged(const ChainState&) { rebuild(); }
@@ -872,6 +936,7 @@ void RigView::resized() {
     if (row == 0)
       fx_->setBounds(juce::roundToInt(x), y, juce::roundToInt(widthOf(Kind::fx) * scale), h);
   }
+  layoutCables();
 }
 
 std::vector<juce::Component*> RigView::modules() const {
@@ -882,25 +947,32 @@ std::vector<juce::Component*> RigView::modules() const {
 }
 
 void RigView::paint(juce::Graphics& g) {
-  // Cables between neighbouring modules (and into the FX unit).
-  const auto cable = [&](juce::Rectangle<int> a, juce::Rectangle<int> b) {
+  // Cables between neighbouring modules (and into the FX unit); one that
+  // touches a bypassed module is dim, the signal skipping past it.
+  const bool pulses = theme::animate();
+  for (auto& c : cables_) {
+    const auto a = c.from->getBounds(), b = c.to->getBounds();
     const float y = static_cast<float>(a.getCentreY());
     const juce::Line<float> line(static_cast<float>(a.getRight()), y, static_cast<float>(b.getX()), y);
-    if (theme::kStyle.glow > 0.0f) {
+    const bool live = cableLive(c);
+    if (live && theme::kStyle.glow > 0.0f) {
       g.setColour(theme::kBrandYellow.withAlpha(0.15f * theme::kStyle.glow));
       g.drawLine(line, 5.0f);
     }
-    g.setColour(theme::kBrandYellow.withAlpha(0.7f));
+    g.setColour(live ? theme::kBrandYellow.withAlpha(0.7f) : theme::kGray.withAlpha(0.35f));
     g.drawLine(line, 1.5f);
-  };
-  for (int row = 0; row < rowCount_; ++row) {
-    Module* prev = nullptr;
-    for (auto& m : modules_) {
-      if (static_cast<int>(m->getProperties()["row"]) != row) continue;
-      if (prev != nullptr) cable(prev->getBounds(), m->getBounds());
-      prev = m.get();
+    // The pulse: brighter and bigger the harder the upstream module plays.
+    const float level = cableLevel(c);
+    c.drawn = pulses && live && level >= kPulseFloor;
+    if (!c.drawn) continue;
+    const auto dot = line.getPointAlongLineProportionally(c.phase);
+    const float r = 1.8f + 1.6f * level;
+    if (theme::kStyle.glow > 0.0f) {
+      g.setColour(theme::kBrandYellow.withAlpha(0.35f * level * theme::kStyle.glow));
+      g.fillEllipse(juce::Rectangle<float>(4 * r, 4 * r).withCentre(dot));
     }
-    if (row == 0 && prev != nullptr && fx_ != nullptr) cable(prev->getBounds(), fx_->getBounds());
+    g.setColour(theme::kWhite.interpolatedWith(theme::kBrandYellow, 0.4f).withAlpha(0.35f + 0.65f * level));
+    g.fillEllipse(juce::Rectangle<float>(2 * r, 2 * r).withCentre(dot));
   }
   if (modules_.empty()) {
     g.setColour(theme::kSubtle);
