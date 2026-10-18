@@ -2630,8 +2630,11 @@ struct RigBypassTests : juce::UnitTest {
     const auto tip = [&]() -> juce::Component* {
       return drive::find(root, [](juce::Component& c) { return c.getComponentID() == HoverTip::kComponentId; });
     };
+    // Over the name: the top quarter (the amp's knobs sit in its middle).
     const auto hover = [&](juce::Component* target) {
-      const auto pos = peer->getComponent().getLocalPoint(target, target->getLocalBounds().getCentre().toFloat());
+      const auto spot = juce::Point<float>(static_cast<float>(target->getWidth()) / 2.0f,
+                                           static_cast<float>(target->getHeight()) * 0.15f);
+      const auto pos = peer->getComponent().getLocalPoint(target, spot);
       peer->handleMouseEvent(juce::MouseInputSource::InputSourceType::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f,
                              juce::Time::currentTimeMillis());
     };
@@ -2642,6 +2645,38 @@ struct RigBypassTests : juce::UnitTest {
     hover(modules[1]);  // the amp's name fits
     pump(600);
     expect(tip() == nullptr, "a name that fits got a tooltip");
+
+    beginTest("an amp knob drags, shows its value, and double-click resets it");
+    auto* amp = modules[1];
+    const float ampScale = static_cast<float>(amp->getHeight()) / 170.0f;
+    const juce::Point<float> inKnob((1.0f + 234.0f * 0.22f) * ampScale, (1.0f + 74.0f) * ampScale);
+    const auto ampIn = [&] {
+      root.services().chain.refresh(true);
+      for (const auto& item : root.services().chain.state().chain)
+        if (item.blockId == "blk-2") return item.params.inputGain;
+      return -1.0;
+    };
+    const double before = ampIn();
+    auto time = juce::Time::currentTimeMillis();
+    const auto at = [&](juce::Point<float> local, bool down) {
+      const auto pos = peer->getComponent().getLocalPoint(amp, local);
+      peer->handleMouseEvent(juce::MouseInputSource::InputSourceType::mouse, pos,
+                             down ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(), 0.0f, 0.0f, ++time);
+      pump(10);
+    };
+    opened.clear();
+    at(inKnob, true);
+    for (int step = 1; step <= 10; ++step) at(inKnob.translated(0.0f, -3.0f * static_cast<float>(step)), true);
+    expect(tip() != nullptr, "the value floats while dragging");
+    at(inKnob.translated(0.0f, -30.0f), false);
+    expect(ampIn() > before, "dragging up raised IN");
+    expect(opened.empty(), "a knob drag opened the block");
+    for (int press = 0; press < 2; ++press) {
+      at(inKnob, true);
+      at(inKnob, false);
+    }
+    expect(juce::approximatelyEqual(ampIn(), 0.5), "double-click reset IN to 0 dB");
+    expect(opened.empty(), "a knob double-click opened the block");
     window.setVisible(false);
   }
 };

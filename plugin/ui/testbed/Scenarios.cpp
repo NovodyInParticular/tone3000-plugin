@@ -76,6 +76,15 @@ const std::map<juce::String, Drive>& drives() {
          if (auto* cab = byHelpPrefix(root, "UK Greenback")) hoverAt(root, *cab, cab->getLocalBounds().getCentre());
          wait(1400);  // past the tooltip delay and the marquee's first rest
        }},
+      {"rig-neural-knob",
+       [](PluginRoot& root, MockBackend&) {
+         // The amp's MIX knob: 78% across, 75 of 170 units down.
+         if (auto* amp = byHelpPrefix(root, "'02 Vox")) {
+           const float k = static_cast<float>(amp->getHeight()) / 170.0f;
+           hoverAt(root, *amp, juce::Point<float>((1.0f + 234.0f * 0.78f) * k, 75.0f * k).toInt());
+         }
+         wait(200);
+       }},
       {"main-meters-hot",
        [](PluginRoot& root, MockBackend&) {
          wait(150);  // a meter tick, so the latch is set

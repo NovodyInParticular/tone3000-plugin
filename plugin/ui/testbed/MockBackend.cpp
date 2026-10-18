@@ -212,14 +212,17 @@ void MockBackend::setNamSlimSizeDefault(double slimSize) {
 // Written through like the processor does it, so the store's synchronous
 // refresh after the call replays into the open block card.
 bool MockBackend::setBlockParam(const std::string& blockId, const juce::String& param, double value) {
-  if (param != "enabled") return true;
   for (const auto* lane : {"chain", "chainRight"}) {
     if (auto* blocks = chain_[lane].getArray()) {
       for (auto& block : *blocks) {
         auto* params = block["params"].getDynamicObject();
         if (block["blockId"].toString().toStdString() != blockId || params == nullptr) continue;
-        params->setProperty("enabled", value >= 0.5);
-        bumpChain();
+        if (param == "enabled") {
+          params->setProperty("enabled", value >= 0.5);
+          bumpChain();
+        } else {
+          params->setProperty(param, value);  // no bump: drags stay cheap, the next pull sees it
+        }
         return true;
       }
     }

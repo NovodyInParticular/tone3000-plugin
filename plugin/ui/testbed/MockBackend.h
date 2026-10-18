@@ -73,7 +73,7 @@ public:
   void persistParamAsMachineDefault(const juce::String& id) override { machineDefaults_.push_back(id); }
   const std::vector<juce::String>& machineDefaults() const { return machineDefaults_; }
 
-  // Records "enabled" (bypass) in the chain; other params are fire-and-forget.
+  // Records the value in the chain; only "enabled" (bypass) bumps the revision.
   bool setBlockParam(const std::string& blockId, const juce::String& param, double value) override;
   bool setBlockSlimSize(const std::string& blockId, double slimSize) override;
   bool setBlockEqBand(const std::string&, int, const juce::var&) override { return true; }

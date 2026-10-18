@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "core/Fonts.h"
+#include "core/KnobScale.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
 #include "widgets/HoverTip.h"
@@ -24,6 +25,9 @@ constexpr int kModuleHeight = 170;  // every module is drawn at this height, the
 constexpr juce::uint32 kTipDelayMs = 350;
 constexpr float kMarqueeSpeed = 28.0f;
 constexpr float kMarqueeRestS = 1.0f;
+// Module knobs: value per nominal unit of vertical drag (Shift: 8x finer).
+constexpr float kKnobDragPerUnit = 0.006f;
+constexpr float kKnobFine = 8.0f;
 
 enum class Kind { pedal, amp, cab, fx };
 
@@ -134,7 +138,9 @@ public:
 
   void setItem(const ChainItem& item) {
     const bool newTone = item_.blockId == item.blockId && (item_.tone.id != item.tone.id || item_.activeModelId != item.activeModelId);
+    const auto held = dragKnob_ >= 0 ? knobValue(knobs()[static_cast<size_t>(dragKnob_)]) : 0.0;
     item_ = item;
+    if (dragKnob_ >= 0) knobValue(knobs()[static_cast<size_t>(dragKnob_)]) = held;  // the drag owns it
     bypassed_ = {};
     titleCut_ = kind_ != Kind::fx && isCut(titleText(), titleSpot());
     setHelpText(item.tone.title + ": click to open the block.");
@@ -178,7 +184,41 @@ public:
     repaint(scope.transformedBy(juce::AffineTransform::scale(scale)).getSmallestIntegerContainer().expanded(2));
   }
 
+  void mouseDown(const juce::MouseEvent& e) override {
+    dragKnob_ = kind_ == Kind::fx ? -1 : knobAt(e.position);
+    if (dragKnob_ < 0) return;
+    dragStartY_ = e.position.y;
+    dragStartValue_ = knobValue(knobs()[static_cast<size_t>(dragKnob_)]);
+    showKnobValue(dragKnob_);
+  }
+
+  void mouseDrag(const juce::MouseEvent& e) override {
+    if (dragKnob_ < 0) return;
+    const float perUnit = kKnobDragPerUnit / (e.mods.isShiftDown() ? kKnobFine : 1.0f);
+    // Shift mid-drag re-anchors, so the value doesn't jump.
+    if (e.mods.isShiftDown() != fineDrag_) {
+      fineDrag_ = e.mods.isShiftDown();
+      dragStartY_ = e.position.y;
+      dragStartValue_ = knobValue(knobs()[static_cast<size_t>(dragKnob_)]);
+    }
+    setKnob(dragKnob_, dragStartValue_ + static_cast<double>((dragStartY_ - e.position.y) / scale() * perUnit));
+  }
+
+  void mouseDoubleClick(const juce::MouseEvent& e) override {
+    const int index = kind_ == Kind::fx ? -1 : knobAt(e.position);
+    if (index < 0) return;
+    setKnob(index, knobs()[static_cast<size_t>(index)].defaultValue);
+    showKnobValue(index);
+  }
+
   void mouseUp(const juce::MouseEvent& e) override {
+    if (dragKnob_ >= 0) {
+      // A knob press never opens the block.
+      dragKnob_ = -1;
+      fineDrag_ = false;
+      if (knobAt(e.position) < 0) knobTip_.hide();
+      return;
+    }
     if (kind_ == Kind::fx || !e.mouseWasClicked()) return;
     if (kind_ == Kind::pedal && overFootswitch(e.position)) {
       // Bypass in place, like a real stomp; the chain poll confirms it.
@@ -192,16 +232,25 @@ public:
 
   void mouseMove(const juce::MouseEvent& e) override {
     const bool over = kind_ == Kind::pedal && overFootswitch(e.position);
-    if (over != overSwitch_) {
+    const int knob = kind_ == Kind::fx ? -1 : knobAt(e.position);
+    if (over != overSwitch_ || knob != hoverKnob_) {
       overSwitch_ = over;
-      setHelpText(over ? juce::String("Footswitch: turn this pedal on or off.")
-                       : item_.tone.title + ": click to open the block.");
+      hoverKnob_ = knob;
+      if (knob >= 0) {
+        const auto& k = knobs()[static_cast<size_t>(knob)];
+        setHelpText(juce::String(k.name) + ": drag up or down to adjust. Shift+drag: fine · double-click: reset.");
+      } else {
+        setHelpText(over ? juce::String("Footswitch: turn this pedal on or off.")
+                         : item_.tone.title + ": click to open the block.");
+      }
+      showKnobValue(knob);
     }
   }
 
   void resized() override {
     bypassed_ = {};
     tip_.hide();
+    knobTip_.hide();
   }
 
   void mouseEnter(const juce::MouseEvent&) override {
@@ -210,7 +259,9 @@ public:
 
   void mouseExit(const juce::MouseEvent&) override {
     hoverSince_ = 0;
+    hoverKnob_ = -1;
     tip_.hide();
+    if (dragKnob_ < 0) knobTip_.hide();
     if (marqueeX_ != 0.0f) {
       marqueeX_ = 0.0f;
       repaintTitle();
@@ -259,6 +310,75 @@ private:
     int lines = 2;
   };
 
+  // The module's knobs (a pedal's IN / OUT, an amp's IN / OUT / MIX), in
+  // nominal units; the same block params the block card's trims set.
+  struct MiniKnob {
+    juce::Point<float> centre;
+    float size;
+    const char* name;
+    const char* param;
+    float defaultValue;
+  };
+
+  std::vector<MiniKnob> knobs() const {
+    const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(kind_)), static_cast<float>(kModuleHeight)).reduced(1.0f);
+    if (kind_ == Kind::pedal)
+      return {{{box.getX() + box.getWidth() * 0.3f, box.getY() + 42}, 26, "IN", "inputGain", 0.5f},
+              {{box.getX() + box.getWidth() * 0.7f, box.getY() + 42}, 26, "OUT", "outputGain", 0.5f}};
+    if (kind_ == Kind::amp) {
+      const float ky = box.getY() + 74;
+      return {{{box.getX() + box.getWidth() * 0.22f, ky}, 30, "IN", "inputGain", 0.5f},
+              {{box.getX() + box.getWidth() * 0.50f, ky}, 30, "OUT", "outputGain", 0.5f},
+              {{box.getX() + box.getWidth() * 0.78f, ky}, 30, "MIX", "mix", 1.0f}};
+    }
+    return {};
+  }
+
+  double& knobValue(const MiniKnob& k) {
+    const juce::String param(k.param);
+    return param == "mix" ? item_.params.mix : param == "outputGain" ? item_.params.outputGain : item_.params.inputGain;
+  }
+
+  static const KnobScale& knobScale(const MiniKnob& k) {
+    return juce::String(k.param) == "mix" ? scales::percent() : scales::gainDb();
+  }
+
+  // The knob under a component point, or -1.
+  int knobAt(juce::Point<float> p) const {
+    const auto local = p / scale();
+    const auto list = knobs();
+    for (size_t i = 0; i < list.size(); ++i)
+      if (local.getDistanceFrom(list[i].centre) <= list[i].size * 0.5f + 3.0f) return static_cast<int>(i);
+    return -1;
+  }
+
+  juce::Rectangle<float> knobArea(const MiniKnob& k) const {
+    return juce::Rectangle<float>(k.size, k.size).withCentre(k.centre).transformedBy(juce::AffineTransform::scale(scale()));
+  }
+
+  void showKnobValue(int index) {
+    const auto list = knobs();
+    if (index < 0 || index >= static_cast<int>(list.size())) {
+      knobTip_.hide();
+      return;
+    }
+    const auto& k = list[static_cast<size_t>(index)];
+    knobTip_.show(*this, knobArea(k), juce::String(k.name) + "  " + knobScale(k).format(knobValue(k)));
+  }
+
+  void setKnob(int index, double value) {
+    const auto list = knobs();
+    const auto& k = list[static_cast<size_t>(index)];
+    auto& v = knobValue(k);
+    value = juce::jlimit(0.0, 1.0, value);
+    if (juce::exactlyEqual(v, value)) return;
+    v = value;
+    services_.chain.setBlockParam(item_.blockId, k.param, value);
+    bypassed_ = {};
+    repaint(knobArea(k).getSmallestIntegerContainer().expanded(4));
+    showKnobValue(index);
+  }
+
   TitleSpot titleSpot() const {
     const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(kind_)), static_cast<float>(kModuleHeight)).reduced(1.0f);
     switch (kind_) {
@@ -306,7 +426,7 @@ private:
     if (!titleCut_ || hoverSince_ == 0) return;
     const auto now = juce::Time::getMillisecondCounter();
     const auto spot = titleSpot();
-    if (!tip_.showing() && now - hoverSince_ >= kTipDelayMs)
+    if (!tip_.showing() && hoverKnob_ < 0 && dragKnob_ < 0 && now - hoverSince_ >= kTipDelayMs)
       tip_.show(*this, spot.area.transformedBy(juce::AffineTransform::scale(scale())), titleText());
     if (!theme::animate() || bypassed()) return;
     const float travel = juce::jmax(0.0f, Fonts::width(label(12, true), titleText()) - spot.area.getWidth() + 8.0f);
@@ -379,8 +499,7 @@ private:
       case Kind::pedal: {
         body(g, box, enabled && item_.loaded);
         led(g, {box.getCentreX(), box.getY() + 14}, enabled);
-        miniKnob(g, {box.getX() + box.getWidth() * 0.3f, box.getY() + 42}, 26, static_cast<float>(item_.params.inputGain), "IN");
-        miniKnob(g, {box.getX() + box.getWidth() * 0.7f, box.getY() + 42}, 26, static_cast<float>(item_.params.outputGain), "OUT");
+        for (const auto& k : knobs()) miniKnob(g, k.centre, k.size, static_cast<float>(knobValue(k)), k.name);
         title(g);
         footswitch(g, enabled);
         break;
@@ -393,10 +512,7 @@ private:
         g.fillRoundedRectangle(plate, 5.0f);
         title(g);
         // Knobs.
-        const float ky = box.getY() + 74;
-        miniKnob(g, {box.getX() + box.getWidth() * 0.22f, ky}, 30, static_cast<float>(item_.params.inputGain), "IN");
-        miniKnob(g, {box.getX() + box.getWidth() * 0.50f, ky}, 30, static_cast<float>(item_.params.outputGain), "OUT");
-        miniKnob(g, {box.getX() + box.getWidth() * 0.78f, ky}, 30, static_cast<float>(item_.params.mix), "MIX");
+        for (const auto& k : knobs()) miniKnob(g, k.centre, k.size, static_cast<float>(knobValue(k)), k.name);
         // Pulse: a trace whose swing follows the block's output level.
         auto scope = box.reduced(12).removeFromBottom(30);
         g.setColour(theme::kBlack.withAlpha(0.5f));
@@ -469,6 +585,12 @@ private:
   juce::uint32 hoverSince_ = 0;    // 0: not hovered
   float marqueeX_ = 0.0f;          // marquee offset, nominal units
   HoverTip tip_;
+  // Knobs: the one under the pointer and the one being dragged (-1: none).
+  int hoverKnob_ = -1, dragKnob_ = -1;
+  float dragStartY_ = 0.0f;
+  double dragStartValue_ = 0.0;
+  bool fineDrag_ = false;
+  HoverTip knobTip_;
 };
 
 RigView::RigView(Services& services) : services_(services), spectrum_(services.backend, services.clock) {
