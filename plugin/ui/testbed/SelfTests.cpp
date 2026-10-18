@@ -45,6 +45,7 @@
 #include "views/browser/ToneCard.h"
 #include "views/gallery/GalleryGeometry.h"
 #include "views/gallery/GalleryTile.h"
+#include "views/rig/RigView.h"
 #include "widgets/Avatar.h"
 #include "widgets/ChromeTextButton.h"
 #include "widgets/Clickable.h"
@@ -2548,6 +2549,79 @@ struct BlockSizeToggleTests : juce::UnitTest {
   }
 };
 
+// The rig view's pedal footswitch bypasses the pedal in place; a click
+// anywhere else on the pedal opens its block instead.
+struct RigBypassTests : juce::UnitTest {
+  RigBypassTests() : juce::UnitTest("Rig view bypass", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  static void clickAt(juce::ComponentPeer& peer, juce::Component& target, juce::Point<float> local) {
+    const auto pos = peer.getComponent().getLocalPoint(&target, local);
+    const auto now = juce::Time::currentTimeMillis();
+    using Type = juce::MouseInputSource::InputSourceType;
+    peer.handleMouseEvent(Type::mouse, pos, juce::ModifierKeys::leftButtonModifier, 0.0f, 0.0f, now);
+    peer.handleMouseEvent(Type::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f, now + 1);
+    pump(60);
+  }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("rig-neural");
+    if (scenario == nullptr) {
+      expect(false, "rig-neural scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("rig bypass", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto* peer = host.getPeer();
+    auto& root = host.pluginRoot();
+    expect(peer != nullptr);
+    if (peer == nullptr) return;
+    auto* rig = dynamic_cast<RigView*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<RigView*>(&c) != nullptr && c.isShowing();
+    }));
+    expect(rig != nullptr, "the rig view shows");
+    if (rig == nullptr) return;
+    juce::Component* pedal = nullptr;  // the leftmost module: blk-1, the pedal
+    for (auto* c : rig->getChildren())
+      if (dynamic_cast<OutputSpectrum*>(c) == nullptr && (pedal == nullptr || c->getX() < pedal->getX())) pedal = c;
+    expect(pedal != nullptr);
+    if (pedal == nullptr) return;
+    auto enabled = [&] {
+      for (const auto& item : root.services().chain.state().chain)
+        if (item.blockId == "blk-1") return item.params.enabled;
+      return false;
+    };
+    std::string opened;
+    rig->onOpenBlock = [&](const std::string& id) { opened = id; };
+    // The footswitch sits 22 units above the bottom of a 170-unit module.
+    const float scale = static_cast<float>(pedal->getHeight()) / 170.0f;
+    const juce::Point<float> footswitch(static_cast<float>(pedal->getWidth()) / 2.0f,
+                                        static_cast<float>(pedal->getHeight()) - 23.0f * scale);
+
+    beginTest("a click on the footswitch bypasses the pedal and opens nothing");
+    expect(enabled());
+    clickAt(*peer, *pedal, footswitch);
+    expect(LiveScenario::until([&] { root.services().chain.refresh(); return !enabled(); }), "bypassed");
+    expect(opened.empty(), "the footswitch opened the block");
+
+    beginTest("a second click turns it back on");
+    clickAt(*peer, *pedal, footswitch);
+    expect(LiveScenario::until([&] { root.services().chain.refresh(); return enabled(); }), "back on");
+
+    beginTest("a click on the pedal's body opens the block");
+    clickAt(*peer, *pedal, {static_cast<float>(pedal->getWidth()) / 2.0f, 12.0f * scale});
+    expectEquals(juce::String(opened), juce::String("blk-1"));
+    expect(enabled());
+    window.setVisible(false);
+  }
+};
+
 // Committing a typed CC number swaps the listening row for a mapping row of
 // the same height. The form host only re-flows on a height change, so the
 // card has to place its new rows itself or they sit at 0×0 and the card
@@ -3001,6 +3075,7 @@ PresetReorderTests presetReorderTests;
 ChainCrossLaneDragTests chainCrossLaneDragTests;
 BlockSizeToggleTests blockSizeToggleTests;
 MidiMapCommitTests midiMapCommitTests;
+RigBypassTests rigBypassTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;

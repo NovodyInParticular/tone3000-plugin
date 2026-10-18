@@ -59,6 +59,31 @@ void led(juce::Graphics& g, juce::Point<float> c, bool on) {
   g.fillEllipse(juce::Rectangle<float>(6, 6).withCentre(c));
 }
 
+// The pedal's footswitch, in module coordinates.
+juce::Rectangle<float> footswitchBox() {
+  const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(Kind::pedal)), static_cast<float>(kModuleHeight)).reduced(1.0f);
+  return juce::Rectangle<float>(26, 26).withCentre({box.getCentreX(), box.getBottom() - 22});
+}
+
+void footswitch(juce::Graphics& g, bool on) {
+  const auto fs = footswitchBox();
+  if (on) {
+    if (theme::kStyle.glow > 0.0f) {
+      g.setColour(theme::kBrandYellow.withAlpha(0.22f * theme::kStyle.glow));
+      g.fillEllipse(fs.expanded(6.0f));
+    }
+    g.setColour(theme::kGray.withAlpha(0.75f));
+    g.fillEllipse(fs);
+    g.setColour(theme::kBrandYellow);
+    g.drawEllipse(fs.reduced(0.75f), 2.0f);
+  } else {
+    g.setColour(theme::kGray.withAlpha(0.3f));
+    g.fillEllipse(fs);
+    g.setColour(theme::kBorder);
+    g.drawEllipse(fs, 1.5f);
+  }
+}
+
 void grille(juce::Graphics& g, juce::Rectangle<float> area) {
   g.setColour(theme::kBlack.withAlpha(0.6f));
   g.fillRoundedRectangle(area, 4.0f);
@@ -103,6 +128,7 @@ public:
   void setItem(const ChainItem& item) {
     const bool newTone = item_.blockId == item.blockId && (item_.tone.id != item.tone.id || item_.activeModelId != item.activeModelId);
     item_ = item;
+    bypassed_ = {};
     setHelpText(item.tone.title + ": click to open the block.");
     if (newTone && theme::kStyle.glitchOnLoad && theme::animate())
       glitchUntil_ = juce::Time::getMillisecondCounter() + kGlitchMs;
@@ -122,6 +148,7 @@ public:
       }
       if (bits != fxBits_) {
         fxBits_ = bits;
+        bypassed_ = {};
         repaint();
       }
       return;
@@ -131,7 +158,7 @@ public:
       repaint();
       return;
     }
-    if (!theme::animate() || kind_ != Kind::amp) return;
+    if (!theme::animate() || kind_ != Kind::amp || bypassed()) return;
     phase_ += 0.18f;
     // Only the pulse trace moves.
     const float scale = static_cast<float>(getHeight()) / static_cast<float>(kModuleHeight);
@@ -143,10 +170,46 @@ public:
   }
 
   void mouseUp(const juce::MouseEvent& e) override {
-    if (kind_ != Kind::fx && e.mouseWasClicked() && onOpen) onOpen(item_.blockId);
+    if (kind_ == Kind::fx || !e.mouseWasClicked()) return;
+    if (kind_ == Kind::pedal && overFootswitch(e.position)) {
+      // Bypass in place, like a real stomp; the chain poll confirms it.
+      item_.params.enabled = !item_.params.enabled;
+      services_.chain.setBlockParam(item_.blockId, "enabled", item_.params.enabled);
+      repaint();
+      return;
+    }
+    if (onOpen) onOpen(item_.blockId);
   }
 
+  void mouseMove(const juce::MouseEvent& e) override {
+    const bool over = kind_ == Kind::pedal && overFootswitch(e.position);
+    if (over != overSwitch_) {
+      overSwitch_ = over;
+      setHelpText(over ? juce::String("Footswitch: turn this pedal on or off.")
+                       : item_.tone.title + ": click to open the block.");
+    }
+  }
+
+  void resized() override { bypassed_ = {}; }
+
   void paint(juce::Graphics& g) override {
+    if (bypassed()) {
+      // Bypassed gear: drawn once, desaturated and dimmed, then reused
+      // until the module changes (nothing on it moves).
+      const float px = g.getInternalContext().getPhysicalPixelScaleFactor();
+      const int w = juce::jmax(1, juce::roundToInt(static_cast<float>(getWidth()) * px));
+      const int h = juce::jmax(1, juce::roundToInt(static_cast<float>(getHeight()) * px));
+      if (bypassed_.isNull() || bypassed_.getWidth() != w || bypassed_.getHeight() != h) {
+        bypassed_ = juce::Image(juce::Image::ARGB, w, h, true);
+        juce::Graphics ig(bypassed_);
+        ig.addTransform(juce::AffineTransform::scale(px));
+        draw(ig);
+        bypassed_.desaturate();
+        bypassed_.multiplyAllAlphas(0.55f);
+      }
+      g.drawImage(bypassed_, getLocalBounds().toFloat());
+      return;
+    }
     if (!glitching()) {
       draw(g);
       return;
@@ -166,10 +229,16 @@ public:
   }
 
 private:
+  bool bypassed() const { return kind_ == Kind::fx ? fxBits_ == 0 : !item_.params.enabled; }
+  bool overFootswitch(juce::Point<float> p) const {
+    const float scale = static_cast<float>(getHeight()) / static_cast<float>(kModuleHeight);
+    return footswitchBox().expanded(4.0f).contains(p / scale);
+  }
+
   bool glitching() const { return juce::Time::getMillisecondCounter() < glitchUntil_; }
 
   void meterChanged(const juce::String& id) override {
-    if (kind_ == Kind::fx || id != MeterStore::blockOutId(item_.blockId)) return;
+    if (kind_ == Kind::fx || bypassed() || id != MeterStore::blockOutId(item_.blockId)) return;
     if (kind_ == Kind::amp && theme::animate()) return;  // the tick repaints amps
     repaint();
   }
@@ -201,7 +270,7 @@ private:
     juce::Graphics::ScopedSaveState save(g);
     g.addTransform(juce::AffineTransform::scale(scale));
     const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(kind_)), static_cast<float>(kModuleHeight)).reduced(1.0f);
-    const bool enabled = kind_ == Kind::fx || item_.params.enabled;
+    const bool enabled = !bypassed();
     switch (kind_) {
       case Kind::pedal: {
         body(g, box, enabled && item_.loaded);
@@ -209,12 +278,7 @@ private:
         miniKnob(g, {box.getX() + box.getWidth() * 0.3f, box.getY() + 42}, 26, static_cast<float>(item_.params.inputGain), "IN");
         miniKnob(g, {box.getX() + box.getWidth() * 0.7f, box.getY() + 42}, 26, static_cast<float>(item_.params.outputGain), "OUT");
         title(g, box.withTrimmedTop(74).withHeight(34).reduced(6, 0));
-        // Footswitch.
-        const auto fs = juce::Rectangle<float>(26, 26).withCentre({box.getCentreX(), box.getBottom() - 22});
-        g.setColour(theme::kGray.withAlpha(0.6f));
-        g.fillEllipse(fs);
-        g.setColour(theme::kBorder);
-        g.drawEllipse(fs, 1.5f);
+        footswitch(g, enabled);
         break;
       }
       case Kind::amp: {
@@ -286,10 +350,6 @@ private:
         break;
       }
     }
-    if (!enabled) {
-      g.setColour(theme::kBlack.withAlpha(0.35f));
-      g.fillRoundedRectangle(box, 10.0f);
-    }
   }
 
   Services& services_;
@@ -299,6 +359,8 @@ private:
   juce::uint32 glitchUntil_ = 0;
   bool wasGlitching_ = false;
   int fxBits_ = -1;
+  bool overSwitch_ = false;
+  juce::Image bypassed_;  // the desaturated bypass look, cached
 };
 
 RigView::RigView(Services& services) : services_(services), spectrum_(services.backend, services.clock) {
