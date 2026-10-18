@@ -71,6 +71,11 @@ const std::map<juce::String, Drive>& drives() {
          clickByHelp(root, "Input Mode");
          wait(200);
        }},
+      {"rig-neural-longname",
+       [](PluginRoot& root, MockBackend&) {
+         if (auto* cab = byHelpPrefix(root, "UK Greenback")) hoverAt(root, *cab, cab->getLocalBounds().getCentre());
+         wait(1400);  // past the tooltip delay and the marquee's first rest
+       }},
       {"main-meters-hot",
        [](PluginRoot& root, MockBackend&) {
          wait(150);  // a meter tick, so the latch is set

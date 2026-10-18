@@ -46,6 +46,7 @@
 #include "views/gallery/GalleryGeometry.h"
 #include "views/gallery/GalleryTile.h"
 #include "views/rig/RigView.h"
+#include "widgets/HoverTip.h"
 #include "widgets/Avatar.h"
 #include "widgets/ChromeTextButton.h"
 #include "widgets/Clickable.h"
@@ -2618,6 +2619,29 @@ struct RigBypassTests : juce::UnitTest {
     clickAt(*peer, *pedal, {static_cast<float>(pedal->getWidth()) / 2.0f, 12.0f * scale});
     expectEquals(juce::String(opened), juce::String("blk-1"));
     expect(enabled());
+
+    // Modules left to right: pedal, amp, cab (the Time FX unit is last).
+    std::vector<juce::Component*> modules;
+    for (auto* c : rig->getChildren())
+      if (dynamic_cast<OutputSpectrum*>(c) == nullptr) modules.push_back(c);
+    std::sort(modules.begin(), modules.end(), [](auto* a, auto* b) { return a->getX() < b->getX(); });
+    expect(modules.size() == 4);
+    if (modules.size() != 4) return;
+    const auto tip = [&]() -> juce::Component* {
+      return drive::find(root, [](juce::Component& c) { return c.getComponentID() == HoverTip::kComponentId; });
+    };
+    const auto hover = [&](juce::Component* target) {
+      const auto pos = peer->getComponent().getLocalPoint(target, target->getLocalBounds().getCentre().toFloat());
+      peer->handleMouseEvent(juce::MouseInputSource::InputSourceType::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f,
+                             juce::Time::currentTimeMillis());
+    };
+
+    beginTest("hovering a cut-off name floats the full name; leaving hides it");
+    hover(modules[2]);  // "UK Greenback - Marshall 1960TV 4x12 M201" doesn't fit the cab
+    expect(LiveScenario::until([&] { return tip() != nullptr; }), "no tooltip for the cab's long name");
+    hover(modules[1]);  // the amp's name fits
+    pump(600);
+    expect(tip() == nullptr, "a name that fits got a tooltip");
     window.setVisible(false);
   }
 };

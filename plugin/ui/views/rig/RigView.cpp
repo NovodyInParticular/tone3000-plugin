@@ -6,6 +6,7 @@
 #include "core/Fonts.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
+#include "widgets/HoverTip.h"
 #include "widgets/KnobFace.h"
 
 namespace t3k::ui {
@@ -17,6 +18,12 @@ constexpr int kGap = 26;          // between modules (the cable)
 constexpr int kSpectrumHeight = 96;
 constexpr int kGlitchMs = 220;
 constexpr int kModuleHeight = 170;  // every module is drawn at this height, then scaled
+// Long names: the full name floats under the module after this hover, and
+// on animated skins the cut title scrolls (units per second, with a rest at
+// each end).
+constexpr juce::uint32 kTipDelayMs = 350;
+constexpr float kMarqueeSpeed = 28.0f;
+constexpr float kMarqueeRestS = 1.0f;
 
 enum class Kind { pedal, amp, cab, fx };
 
@@ -129,6 +136,7 @@ public:
     const bool newTone = item_.blockId == item.blockId && (item_.tone.id != item.tone.id || item_.activeModelId != item.activeModelId);
     item_ = item;
     bypassed_ = {};
+    titleCut_ = kind_ != Kind::fx && isCut(titleText(), titleSpot());
     setHelpText(item.tone.title + ": click to open the block.");
     if (newTone && theme::kStyle.glitchOnLoad && theme::animate())
       glitchUntil_ = juce::Time::getMillisecondCounter() + kGlitchMs;
@@ -139,6 +147,7 @@ public:
   std::function<void(const std::string&)> onOpen;
 
   void advance() {
+    hoverTick();
     if (kind_ == Kind::fx) {
       // Mirrors three parameters: repaint only when one flips.
       int bits = 0, bit = 1;
@@ -190,7 +199,23 @@ public:
     }
   }
 
-  void resized() override { bypassed_ = {}; }
+  void resized() override {
+    bypassed_ = {};
+    tip_.hide();
+  }
+
+  void mouseEnter(const juce::MouseEvent&) override {
+    hoverSince_ = juce::Time::getMillisecondCounter();
+  }
+
+  void mouseExit(const juce::MouseEvent&) override {
+    hoverSince_ = 0;
+    tip_.hide();
+    if (marqueeX_ != 0.0f) {
+      marqueeX_ = 0.0f;
+      repaintTitle();
+    }
+  }
 
   void paint(juce::Graphics& g) override {
     if (bypassed()) {
@@ -229,6 +254,76 @@ public:
   }
 
 private:
+  struct TitleSpot {
+    juce::Rectangle<float> area;  // nominal module units
+    int lines = 2;
+  };
+
+  TitleSpot titleSpot() const {
+    const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(kind_)), static_cast<float>(kModuleHeight)).reduced(1.0f);
+    switch (kind_) {
+      case Kind::pedal: return {box.withTrimmedTop(74).withHeight(34).reduced(6, 0), 2};
+      case Kind::amp: return {box.reduced(10).removeFromTop(34).reduced(6, 2), 2};
+      case Kind::cab: return {box.reduced(8).removeFromBottom(26), 1};
+      case Kind::fx: break;
+    }
+    return {};
+  }
+
+  juce::String titleText() const {
+    return item_.tone.title.isNotEmpty() ? item_.tone.title : juce::String("Untitled");
+  }
+
+  // Whether the title, fitted into `spot` as title() draws it, loses
+  // characters to an ellipsis.
+  static bool isCut(const juce::String& text, const TitleSpot& spot) {
+    juce::GlyphArrangement glyphs;
+    glyphs.addFittedText(label(12, true), text, spot.area.getX(), spot.area.getY(), spot.area.getWidth(),
+                         spot.area.getHeight(), juce::Justification::centred, spot.lines, 0.8f);
+    const int count = glyphs.getNumGlyphs();
+    if (count == 0) return false;
+    int shown = 0, wanted = 0;
+    for (int i = 0; i < count; ++i)
+      if (!glyphs.getGlyph(i).isWhitespace()) ++shown;
+    for (auto c : text)
+      if (!juce::CharacterFunctions::isWhitespace(c)) ++wanted;
+    // Characters missing, or an ellipsis the name itself doesn't end with
+    // (a name cut by one letter gains three dots and loses one).
+    const auto last = glyphs.getGlyph(count - 1).getCharacter();
+    const bool endsInDots = last == 0x2026 || last == '.';
+    return shown < wanted || (endsInDots && !text.trimEnd().endsWithChar(last));
+  }
+
+  float scale() const { return static_cast<float>(getHeight()) / static_cast<float>(kModuleHeight); }
+
+  void repaintTitle() {
+    repaint(titleSpot().area.transformedBy(juce::AffineTransform::scale(scale())).getSmallestIntegerContainer().expanded(2));
+  }
+
+  // Hover on a cut title: the tooltip after a moment, and the marquee on
+  // skins that animate (rests at each end, then runs back).
+  void hoverTick() {
+    if (!titleCut_ || hoverSince_ == 0) return;
+    const auto now = juce::Time::getMillisecondCounter();
+    const auto spot = titleSpot();
+    if (!tip_.showing() && now - hoverSince_ >= kTipDelayMs)
+      tip_.show(*this, spot.area.transformedBy(juce::AffineTransform::scale(scale())), titleText());
+    if (!theme::animate() || bypassed()) return;
+    const float travel = juce::jmax(0.0f, Fonts::width(label(12, true), titleText()) - spot.area.getWidth() + 8.0f);
+    const float runS = travel / kMarqueeSpeed;
+    const float cycle = 2.0f * (runS + kMarqueeRestS);
+    float t = std::fmod(static_cast<float>(now - hoverSince_) / 1000.0f, cycle);
+    float x = 0.0f;
+    if (t < kMarqueeRestS) x = 0.0f;
+    else if ((t -= kMarqueeRestS) < runS) x = t * kMarqueeSpeed;
+    else if ((t -= runS) < kMarqueeRestS) x = travel;
+    else x = travel - (t - kMarqueeRestS) * kMarqueeSpeed;
+    if (!juce::approximatelyEqual(x, marqueeX_)) {
+      marqueeX_ = x;
+      repaintTitle();
+    }
+  }
+
   bool bypassed() const { return kind_ == Kind::fx ? fxBits_ == 0 : !item_.params.enabled; }
   bool overFootswitch(juce::Point<float> p) const {
     const float scale = static_cast<float>(getHeight()) / static_cast<float>(kModuleHeight);
@@ -256,11 +351,20 @@ private:
     g.drawRoundedRectangle(box.reduced(0.5f), 10.0f, 1.0f);
   }
 
-  void title(juce::Graphics& g, juce::Rectangle<float> area, int lines = 2) {
+  void title(juce::Graphics& g) {
+    const auto spot = titleSpot();
     g.setColour(item_.params.enabled ? theme::kWhite : theme::kGray);
     g.setFont(label(12, true));
-    g.drawFittedText(item_.tone.title.isNotEmpty() ? item_.tone.title : juce::String("Untitled"), area.toNearestInt(),
-                     juce::Justification::centred, lines, 0.8f);
+    if (hoverSince_ != 0 && titleCut_ && theme::animate() && !bypassed()) {
+      // Marquee: one line, slid left inside the title area.
+      juce::Graphics::ScopedSaveState save(g);
+      g.reduceClipRegion(spot.area.toNearestInt());
+      const float w = Fonts::width(label(12, true), titleText()) + 2.0f;
+      g.drawText(titleText(), juce::Rectangle<float>(spot.area.getX() + 4.0f - marqueeX_, spot.area.getY(), w, spot.area.getHeight()),
+                 juce::Justification::centredLeft, false);
+      return;
+    }
+    g.drawFittedText(titleText(), spot.area.toNearestInt(), juce::Justification::centred, spot.lines, 0.8f);
   }
 
   void draw(juce::Graphics& g) {
@@ -277,7 +381,7 @@ private:
         led(g, {box.getCentreX(), box.getY() + 14}, enabled);
         miniKnob(g, {box.getX() + box.getWidth() * 0.3f, box.getY() + 42}, 26, static_cast<float>(item_.params.inputGain), "IN");
         miniKnob(g, {box.getX() + box.getWidth() * 0.7f, box.getY() + 42}, 26, static_cast<float>(item_.params.outputGain), "OUT");
-        title(g, box.withTrimmedTop(74).withHeight(34).reduced(6, 0));
+        title(g);
         footswitch(g, enabled);
         break;
       }
@@ -287,7 +391,7 @@ private:
         auto plate = box.reduced(10).removeFromTop(34);
         g.setColour(theme::kBlack.withAlpha(0.55f));
         g.fillRoundedRectangle(plate, 5.0f);
-        title(g, plate.reduced(6, 2), 2);
+        title(g);
         // Knobs.
         const float ky = box.getY() + 74;
         miniKnob(g, {box.getX() + box.getWidth() * 0.22f, ky}, 30, static_cast<float>(item_.params.inputGain), "IN");
@@ -319,7 +423,7 @@ private:
       case Kind::cab: {
         body(g, box, enabled && item_.loaded);
         grille(g, box.reduced(10).withTrimmedBottom(32));
-        title(g, box.reduced(8).removeFromBottom(26), 1);
+        title(g);
         if (item_.dualIr && item_.dualIr->hasB) {
           g.setColour(theme::kBrandYellow);
           g.setFont(label(10, true));
@@ -361,6 +465,10 @@ private:
   int fxBits_ = -1;
   bool overSwitch_ = false;
   juce::Image bypassed_;  // the desaturated bypass look, cached
+  bool titleCut_ = false;          // the title doesn't fit its spot
+  juce::uint32 hoverSince_ = 0;    // 0: not hovered
+  float marqueeX_ = 0.0f;          // marquee offset, nominal units
+  HoverTip tip_;
 };
 
 RigView::RigView(Services& services) : services_(services), spectrum_(services.backend, services.clock) {
