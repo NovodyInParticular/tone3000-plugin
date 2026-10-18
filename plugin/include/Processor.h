@@ -1399,9 +1399,14 @@ private:
   // The plugin's output for the rig view's analyser, addressed through the
   // block spectrum API as kOutputSpectrumId.
   BlockSpectrum outputSpectrum;
+  // The dry input as the rig receives it (after the Input knob and input
+  // calibration, before the gate), for the analyser's ghost trace:
+  // kInputSpectrumId.
+  BlockSpectrum inputSpectrum;
 
 public:
   static constexpr const char* kOutputSpectrumId = "output";
+  static constexpr const char* kInputSpectrumId = "input";
 
 private:
   std::atomic<double> hostBpm{0.0};

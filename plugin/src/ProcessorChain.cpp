@@ -1721,6 +1721,10 @@ bool TONE3000Processor::setBlockSpectrumEnabled(const std::string& blockId, bool
     outputSpectrum.setEnabled(enabled);
     return true;
   }
+  if (blockId == kInputSpectrumId) {
+    inputSpectrum.setEnabled(enabled);
+    return true;
+  }
   juce::ScopedLock lock(chainMutex);
   ChainBlock* block = findBlockById(blockId);
   if (block == nullptr || block->type == ChainBlockType::INSERT)
@@ -1735,6 +1739,8 @@ juce::var TONE3000Processor::getBlockSpectrum(const std::string& blockId) {
   // so the chain lock is only held for the block lookup + analysis.
   if (blockId == kOutputSpectrumId)
     return outputSpectrum.getSpectrum();  // its own ring; no chain lock
+  if (blockId == kInputSpectrumId)
+    return inputSpectrum.getSpectrum();
   juce::ScopedLock lock(chainMutex);
   ChainBlock* block = findBlockById(blockId);
   if (block == nullptr || block->type == ChainBlockType::INSERT)

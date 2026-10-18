@@ -1065,6 +1065,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   // allocates while processing.
   timeFx.prepare(sampleRate, samplesPerBlock);
   outputSpectrum.prepare(sampleRate);
+  inputSpectrum.prepare(sampleRate);
 
   // Chain-edit fade: host-rate. Primed audible normally, but a device can
   // start while a fade session holds the chain (launch: state restore arms
@@ -2069,6 +2070,12 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   if (cacheInputCalGain != 1.0f)
     for (int ch = 0; ch < numChannels; ++ch)
       buffer.applyGain(ch, 0, numSamples, cacheInputCalGain);
+
+  // Input spectrum (the rig view's ghost trace): the dry signal heading into
+  // the chain. Copies into a lock-free ring only while the trace is shown.
+  if (inputSpectrum.isEnabled())
+    inputSpectrum.pushSamples(buffer.getReadPointer(0), numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
+                              numSamples);
 
   // Noise gate, post input gain so the threshold knob's dB meaning matches
   // the level heading into the chain. Envelope/hysteresis gate (NoiseGate.h);
