@@ -20,6 +20,7 @@
     "segmentedTrack": "#FFFFFF2E",
     "panelBg": "#0A0A0A"
   },
+  "logo": { "style": "fill", "color": "#FFFFFF" },
   "style": {
     "knob": "ring",
     "glow": 0,

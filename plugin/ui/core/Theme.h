@@ -12,6 +12,8 @@
 
 #include <juce_graphics/juce_graphics.h>
 
+#include <optional>
+
 namespace t3k::ui::theme {
 
 // Lucide / custom glyph size inside ICON_BOX_SIZE chrome boxes.
@@ -85,6 +87,20 @@ struct Style {
   juce::Colour background{0xff000000};  // behind the chain
 };
 inline Style kStyle;
+
+// How the header draws the TONE3000 wordmark (skin.json "logo").
+//  brand:   the original artwork (yellow face, red and blue slices).
+//  fill:    the face in one colour.
+//  outline: the face as an outline, with a halo of `glow` strength.
+// The offset slices take `echo`, or are left out when the skin gives none.
+enum class LogoStyle { brand, fill, outline };
+struct Logo {
+  LogoStyle style = LogoStyle::brand;
+  std::optional<juce::Colour> colour;  // the face; unset: the accent
+  std::optional<juce::Colour> echo;    // the slices; unset: none
+  float glow = 0.0f;
+};
+inline Logo kLogo;
 // The "Reduce animations" setting (UiPrefs::kReduceAnimations), machine-wide
 // like the skin: turns off every moving visual whatever the skin asks for.
 inline bool kReduceMotion = false;
@@ -113,6 +129,7 @@ inline void resetToClassic() {
   kSegmentedTrack = juce::Colour(120, 120, 128).withAlpha(0.36f);
   kPanelBg = juce::Colour{0xff141416};
   kStyle = Style{};
+  kLogo = Logo{};
 }
 
 }  // namespace t3k::ui::theme

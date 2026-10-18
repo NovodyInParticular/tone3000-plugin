@@ -84,6 +84,22 @@ if it was the active skin, the default (Neural) is used instead.
 | `glitchOnLoad` | bool   | A short flicker on a module when a new tone lands |
 | `grille`       | `"photo"` / `"dots"` / `"hex"` | How the rig view draws a cab |
 
+### logo
+
+How the header draws the TONE3000 wordmark. Leave it out to keep the
+original artwork.
+
+| Key     | Values | Effect |
+|---------|--------|--------|
+| `style` | `"brand"` / `"fill"` / `"outline"` | Original artwork, the letters in one colour, or outlined letters |
+| `color` | colour | The letters (defaults to `accent`) |
+| `echo`  | colour | The offset slices behind the letters (left out: no slices) |
+| `glow`  | 0–1    | Halo around an outline |
+
+```json
+"logo": { "style": "outline", "color": "#00F0FF", "echo": "#FF2E8859", "glow": 0.8 }
+```
+
 ### backgroundImage
 
 An optional SVG file inside the skin folder (plain file name, no paths,

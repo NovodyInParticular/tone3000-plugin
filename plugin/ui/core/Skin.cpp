@@ -140,6 +140,16 @@ bool applyManifest(const juce::String& json, const juce::File& dir) {
     kStyle.background = kBlack;
   }
 
+  // The header wordmark.
+  if (const auto& logo = v["logo"]; logo.isObject()) {
+    const juce::String style = logo["style"].toString();
+    kLogo.style = style == "outline" ? LogoStyle::outline : style == "fill" ? LogoStyle::fill : LogoStyle::brand;
+    juce::Colour c;
+    if (parseColour(logo["color"], c)) kLogo.colour = c;
+    if (parseColour(logo["echo"], c)) kLogo.echo = c;
+    kLogo.glow = unit(logo["glow"], 0.0f);
+  }
+
   // Optional background art: a small SVG inside the skin's own folder.
   backgroundSlot().reset();
   const juce::String bg = v["backgroundImage"].toString();

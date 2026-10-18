@@ -1046,6 +1046,22 @@ struct SkinTests : juce::UnitTest {
 #endif
     }
 
+    beginTest("a skin restyles the wordmark; a bad or missing logo block keeps the brand artwork");
+    {
+      expect(skin::applyManifest(R"({"logo":{"style":"outline","color":"#00F0FF","echo":"#FF2E8859","glow":0.8}})", {}));
+      expect(theme::kLogo.style == theme::LogoStyle::outline);
+      expect(theme::kLogo.colour.has_value() && theme::kLogo.colour->getARGB() == 0xff00f0ffu);
+      expect(theme::kLogo.echo.has_value());
+      expectWithinAbsoluteError(theme::kLogo.glow, 0.8f, 1e-6f);
+      expect(skin::applyManifest(R"({"logo":{"style":"sparkles","color":"nope"}})", {}));
+      expect(theme::kLogo.style == theme::LogoStyle::brand && !theme::kLogo.colour.has_value());
+      skin::apply("classic");
+      expect(theme::kLogo.style == theme::LogoStyle::brand);
+      skin::apply("neural");
+      expect(theme::kLogo.style == theme::LogoStyle::outline);
+      skin::apply("classic");
+    }
+
     beginTest("reduce animations stills every skin; Minimal is still on its own");
     {
       skin::apply("neural");

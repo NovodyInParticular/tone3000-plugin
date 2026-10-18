@@ -1,6 +1,7 @@
 #include "Brand.h"
 
 #include "Paint.h"
+#include "Theme.h"
 #include "UiBinaryData.h"
 
 namespace t3k::ui {
@@ -55,11 +56,79 @@ const juce::Drawable& Brand::verifiedBadge() {
   return *d;
 }
 
+namespace {
+
+// The wordmark's layers by their artwork colour: the yellow face and the
+// red / blue offset slices behind it.
+constexpr juce::uint32 kFace = 0xffffff00, kSliceRed = 0xffff0000, kSliceBlue = 0xff0000ff;
+
+// Restyles every shape in a copy of the wordmark: `face` for the face,
+// `slices` for both slices (transparent hides them). With a stroke width,
+// the face is outlined in `face` and filled with `inside` instead.
+void restyle(juce::Drawable& d, juce::Colour face, juce::Colour slices, float strokeWidth,
+             juce::Colour inside = juce::Colours::transparentBlack) {
+  if (auto* shape = dynamic_cast<juce::DrawableShape*>(&d)) {
+    const auto argb = shape->getFill().colour.getARGB();
+    if (argb == kFace) {
+      if (strokeWidth > 0.0f) {
+        shape->setFill(inside);
+        shape->setStrokeFill(face);
+        shape->setStrokeType(juce::PathStrokeType(strokeWidth, juce::PathStrokeType::curved,
+                                                  juce::PathStrokeType::rounded));
+      } else {
+        shape->setFill(face);
+      }
+    } else if (argb == kSliceRed || argb == kSliceBlue) {
+      shape->setFill(slices);
+    }
+  }
+  if (auto* group = dynamic_cast<juce::DrawableComposite*>(&d))
+    for (int i = 0; i < group->getNumChildren(); ++i) restyle(group->getChild(i), face, slices, strokeWidth, inside);
+}
+
+// The skin's version of the wordmark, rebuilt when the skin changes: the
+// glow underlay (outline only) and the wordmark itself. Empty for "brand".
+struct SkinnedLogo {
+  int generation = -1;
+  std::unique_ptr<juce::Drawable> glow, body;
+};
+
+const SkinnedLogo& skinnedLogo() {
+  static SkinnedLogo cache;
+  if (cache.generation == theme::kGeneration) return cache;
+  cache.generation = theme::kGeneration;
+  cache.glow.reset();
+  cache.body.reset();
+  const auto& logo = theme::kLogo;
+  if (logo.style == theme::LogoStyle::brand) return cache;
+  const auto face = logo.colour.value_or(theme::kBrandYellow);
+  const auto slices = logo.echo.value_or(juce::Colours::transparentBlack);
+  const bool outline = logo.style == theme::LogoStyle::outline;
+  cache.body = Brand::logo().createCopy();
+  // An outline's hollow face is filled with the backdrop, so the slices
+  // only show at its edges.
+  restyle(*cache.body, face, slices, outline ? 1.1f : 0.0f, theme::kStyle.background);
+  if (outline && logo.glow > 0.0f) {
+    cache.glow = Brand::logo().createCopy();
+    restyle(*cache.glow, face.withMultipliedAlpha(0.35f * logo.glow), juce::Colours::transparentBlack, 4.0f);
+  }
+  return cache;
+}
+
+}  // namespace
+
 void Brand::drawLogo(juce::Graphics& g, juce::Rectangle<float> box) {
   // The web laid the logo out by width only (<img style="width: 160rem">),
   // so the height follows the 210:32 viewBox and may be fractional.
   const float h = box.getWidth() * 32.0f / 210.0f;
-  paint::svg(g, logo(), box.withSizeKeepingCentre(box.getWidth(), h));
+  const auto area = box.withSizeKeepingCentre(box.getWidth(), h);
+  const auto& skinned = skinnedLogo();
+  if (skinned.body == nullptr) {
+    paint::svg(g, logo(), area);
+    return;
+  }
+  if (skinned.glow != nullptr) paint::svg(g, *skinned.glow, area);
+  paint::svg(g, *skinned.body, area);
 }
 
 void Brand::drawMark(juce::Graphics& g, juce::Rectangle<float> box) {
