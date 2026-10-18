@@ -5,6 +5,7 @@
 #pragma once
 
 #include <memory>
+#include <set>
 #include <vector>
 
 #include "MockSignal.h"
@@ -89,6 +90,10 @@ public:
   bool resetBlockEq(const std::string&) override { return true; }
   bool setBlockSpectrumEnabled(const std::string&, bool) override { return true; }
   juce::var getBlockSpectrum(const std::string&) override;
+  bool setBlockScopeEnabled(const std::string& blockId, bool enabled) override;
+  juce::var getBlockScope(const std::string& blockId) override;
+  // Blocks whose scope the UI has switched on (tests check the tap follows the view).
+  std::set<std::string> scopesOn;
 
   juce::var getPresetList() override;
   juce::var savePreset(const juce::String& name) override;

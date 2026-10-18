@@ -154,6 +154,7 @@ public:
     services_.stepper.addListener(this);
   }
   ~Module() override {
+    if (scopeOn_) services_.backend.setBlockScopeEnabled(item_.blockId, false);
     services_.stepper.removeListener(this);
     services_.meters.removeListener(this);
   }
@@ -196,15 +197,47 @@ public:
       repaint();
       return;
     }
-    if (!theme::animate() || kind_ != Kind::amp || bypassed()) return;
-    phase_ += 0.18f;
-    // Only the pulse trace moves.
-    const float scale = static_cast<float>(getHeight()) / static_cast<float>(kModuleHeight);
+    // An amp's scope: the native tap runs only while the trace can move
+    // (an animated skin, the amp on and on screen).
+    const bool wantScope = kind_ == Kind::amp && theme::animate() && !bypassed() && isShowing();
+    if (wantScope != scopeOn_) {
+      scopeOn_ = wantScope;
+      services_.backend.setBlockScopeEnabled(item_.blockId, wantScope);
+      if (!wantScope) {
+        wave_.clear();
+        repaint();
+      }
+    }
+    if (!scopeOn_) return;
+    if (!pollScope()) return;
+    // Only the trace moves.
     const auto scope = juce::Rectangle<float>(static_cast<float>(widthOf(kind_)), static_cast<float>(kModuleHeight))
                            .reduced(1.0f)
                            .reduced(12)
                            .removeFromBottom(30);
-    repaint(scope.transformedBy(juce::AffineTransform::scale(scale)).getSmallestIntegerContainer().expanded(2));
+    repaint(scope.transformedBy(juce::AffineTransform::scale(scale())).getSmallestIntegerContainer().expanded(2));
+  }
+
+  // The latest waveform, with a slow auto-gain so a quiet amp still reads
+  // (silence stays flat: the gain stops at kScopeMaxGain). Whether it moved.
+  bool pollScope() {
+    const auto res = services_.backend.getBlockScope(item_.blockId);
+    const auto* arr = res.getArray();
+    if (arr == nullptr || arr->isEmpty()) return false;
+    float peak = 0.0f;
+    scratch_.resize(static_cast<size_t>(arr->size()));
+    for (int i = 0; i < arr->size(); ++i) {
+      const auto v = static_cast<float>(static_cast<double>((*arr)[i]));
+      scratch_[static_cast<size_t>(i)] = v;
+      peak = std::max(peak, std::abs(v));
+    }
+    // Fast attack, slow release, so the display breathes with the playing.
+    scopePeak_ = peak > scopePeak_ ? peak : scopePeak_ * 0.97f + peak * 0.03f;
+    const float gain = std::min(kScopeMaxGain, 0.9f / std::max(scopePeak_, 1e-4f));
+    for (auto& v : scratch_) v = juce::jlimit(-1.0f, 1.0f, v * gain);
+    if (scratch_ == wave_) return false;
+    std::swap(wave_, scratch_);
+    return true;
   }
 
   void mouseDown(const juce::MouseEvent& e) override {
@@ -625,19 +658,30 @@ private:
         // Knobs.
         for (const auto& k : knobs()) miniKnob(g, k.centre, k.size, static_cast<float>(knobValue(k)), k.name);
         if (showsSize()) sizeBadge(g, {box.getX() + 12, box.getY() + 109}, isSlimSizeFull(item_.params.slimSize));
-        // Pulse: a trace whose swing follows the block's output level.
+        // Scope: the amp's real output when the skin animates (BlockScope);
+        // otherwise a still trace whose swing follows the output level.
         auto scope = box.reduced(12).removeFromBottom(30);
         g.setColour(theme::kBlack.withAlpha(0.5f));
         g.fillRoundedRectangle(scope, 4.0f);
         const float amp = enabled ? outLevel() : 0.0f;
         juce::Path trace;
-        for (int i = 0; i <= 60; ++i) {
-          const float t = static_cast<float>(i) / 60.0f;
-          const float y = scope.getCentreY() -
-                          amp * (scope.getHeight() * 0.42f) * std::sin(t * 13.0f + phase_) * std::sin(t * 3.14159f);
-          const float x = scope.getX() + 4 + t * (scope.getWidth() - 8);
-          if (i == 0) trace.startNewSubPath(x, y);
-          else trace.lineTo(x, y);
+        if (scopeOn_ && wave_.size() >= 2) {
+          const auto n = static_cast<float>(wave_.size() - 1);
+          for (size_t i = 0; i < wave_.size(); ++i) {
+            const float x = scope.getX() + 4 + static_cast<float>(i) / n * (scope.getWidth() - 8);
+            const float y = scope.getCentreY() - wave_[i] * scope.getHeight() * 0.42f;
+            if (i == 0) trace.startNewSubPath(x, y);
+            else trace.lineTo(x, y);
+          }
+        } else {
+          for (int i = 0; i <= 60; ++i) {
+            const float t = static_cast<float>(i) / 60.0f;
+            const float y = scope.getCentreY() -
+                            amp * (scope.getHeight() * 0.42f) * std::sin(t * 13.0f) * std::sin(t * 3.14159f);
+            const float x = scope.getX() + 4 + t * (scope.getWidth() - 8);
+            if (i == 0) trace.startNewSubPath(x, y);
+            else trace.lineTo(x, y);
+          }
         }
         if (theme::kStyle.glow > 0.0f) {
           g.setColour(theme::kBrandYellow.withAlpha(0.2f * theme::kStyle.glow));
@@ -688,7 +732,12 @@ private:
   Services& services_;
   Kind kind_;
   ChainItem item_;
-  float phase_ = 0.0f;
+  // The amp scope: whether the native tap is on, the shown points, a
+  // reused poll buffer and the auto-gain's peak follower.
+  static constexpr float kScopeMaxGain = 8.0f;
+  bool scopeOn_ = false;
+  std::vector<float> wave_, scratch_;
+  float scopePeak_ = 0.0f;
   juce::uint32 glitchUntil_ = 0;
   bool wasGlitching_ = false;
   int fxBits_ = -1;

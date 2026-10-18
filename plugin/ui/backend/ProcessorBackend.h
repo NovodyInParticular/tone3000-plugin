@@ -72,6 +72,8 @@ public:
   bool resetBlockEq(const std::string& blockId) override;
   bool setBlockSpectrumEnabled(const std::string& blockId, bool enabled) override;
   juce::var getBlockSpectrum(const std::string& blockId) override;
+  bool setBlockScopeEnabled(const std::string& blockId, bool enabled) override;
+  juce::var getBlockScope(const std::string& blockId) override;
 
   juce::var getPresetList() override;
   juce::var savePreset(const juce::String& name) override;

@@ -122,6 +122,23 @@ juce::var MockSignal::spectrum(const std::string& blockId) {
   return bins;
 }
 
+juce::var MockSignal::scope(const std::string&) {
+  const auto s = now();
+  const double f0 = s.note != nullptr ? s.note->hz : 110.0;
+  // The sounding note through an amp: harmonics soft-clipped harder the
+  // louder the note, scaled by its envelope; a little noise in the gaps.
+  const double drive = 1.0 + 4.0 * s.env;
+  const double amp = std::pow(10.0, s.levelDb / 20.0);
+  juce::Array<juce::var> points;
+  points.ensureStorageAllocated(96);
+  for (int i = 0; i < 96; ++i) {
+    const double t = 2.0 * juce::MathConstants<double>::pi * f0 * (0.020 * i / 96.0);
+    const double raw = std::sin(t) + 0.4 * std::sin(2 * t + 0.6) + 0.25 * std::sin(3 * t + 1.1);
+    points.add(juce::jlimit(-1.0, 1.0, std::tanh(drive * raw) / std::tanh(drive) * amp * 1.4 + jitter(0.01f)));
+  }
+  return points;
+}
+
 juce::var MockSignal::tuner() {
   const auto s = now();
   if (s.note == nullptr || s.env < 0.04f) return obj({{"frequency", 0}, {"confidence", 0.1}, {"level", s.levelDb}});

@@ -139,6 +139,10 @@ bool ProcessorBackend::setBlockSpectrumEnabled(const std::string& blockId, bool 
 juce::var ProcessorBackend::getBlockSpectrum(const std::string& blockId) {
   return processor_.getBlockSpectrum(blockId);
 }
+bool ProcessorBackend::setBlockScopeEnabled(const std::string& blockId, bool enabled) {
+  return processor_.setBlockScopeEnabled(blockId, enabled);
+}
+juce::var ProcessorBackend::getBlockScope(const std::string& blockId) { return processor_.getBlockScope(blockId); }
 
 // Presets
 juce::var ProcessorBackend::getPresetList() { return processor_.getPresetList(); }

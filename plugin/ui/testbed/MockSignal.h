@@ -26,6 +26,8 @@ public:
   juce::var meters(const juce::var& chain);
   // Backend::getBlockSpectrum: 64 dB bins, 20 Hz..20 kHz log-spaced.
   juce::var spectrum(const std::string& blockId);
+  // Backend::getBlockScope: 96 points of the last 20 ms, -1..1.
+  juce::var scope(const std::string& blockId);
   // Backend::getTunerReading.
   juce::var tuner();
   // Backend::getAudioInputLevels: one dBFS value per input channel.

@@ -89,6 +89,10 @@ public:
   virtual bool resetBlockEq(const std::string& blockId) = 0;
   virtual bool setBlockSpectrumEnabled(const std::string& blockId, bool enabled) = 0;
   virtual juce::var getBlockSpectrum(const std::string& blockId) = 0;
+  // The rig view's amp waveform (plugin/include/BlockScope.h): the native tap
+  // runs only while enabled; the poll returns BlockScope::kPoints values in -1..1.
+  virtual bool setBlockScopeEnabled(const std::string& blockId, bool enabled) = 0;
+  virtual juce::var getBlockScope(const std::string& blockId) = 0;
 
   // Presets
   virtual juce::var getPresetList() = 0;

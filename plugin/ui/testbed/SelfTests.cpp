@@ -2835,6 +2835,38 @@ struct RigToneEqTests : juce::UnitTest {
   }
 };
 
+// The amp's scope taps native only while its trace can move: an animated
+// skin with the amp showing. Minimal (static) never turns the tap on.
+struct RigScopeTests : juce::UnitTest {
+  RigScopeTests() : juce::UnitTest("Rig view amp scope", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    for (const auto& [id, wantOn] : {std::pair{"rig-neural", true}, std::pair{"rig-minimal", false}}) {
+      beginTest(juce::String(id) + (wantOn ? ": the amp's scope tap is on" : ": no scope tap on a static skin"));
+      const auto* scenario = fixtures.find(id);
+      if (scenario == nullptr) {
+        expect(false, juce::String(id) + " scenario missing");
+        continue;
+      }
+      MockBackend backend(scenario->data);
+      {
+        juce::DocumentWindow window("rig scope", juce::Colours::black, 0);
+        ScaledHost host(backend, *scenario, fixtures.root);
+        window.setContentNonOwned(&host, true);
+        window.setVisible(true);
+        pump(400);
+        expectEquals(static_cast<int>(backend.scopesOn.count("blk-2")), wantOn ? 1 : 0);
+        expectEquals(static_cast<int>(backend.scopesOn.count("blk-1")), 0, "a pedal has no scope");
+        window.setVisible(false);
+      }
+      expect(backend.scopesOn.empty(), "the tap outlived the view");
+    }
+  }
+};
+
 // Committing a typed CC number swaps the listening row for a mapping row of
 // the same height. The form host only re-flows on a height change, so the
 // card has to place its new rows itself or they sit at 0×0 and the card
@@ -3313,6 +3345,7 @@ MidiMapCommitTests midiMapCommitTests;
 RigBypassTests rigBypassTests;
 RigStepTests rigStepTests;
 RigToneEqTests rigToneEqTests;
+RigScopeTests rigScopeTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;

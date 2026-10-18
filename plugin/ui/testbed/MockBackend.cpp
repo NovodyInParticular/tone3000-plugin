@@ -266,6 +266,23 @@ void MockBackend::setMultiCore(bool enabled) {
   bumpChain();
 }
 
+bool MockBackend::setBlockScopeEnabled(const std::string& blockId, bool enabled) {
+  if (enabled) scopesOn.insert(blockId);
+  else scopesOn.erase(blockId);
+  return true;
+}
+
+juce::var MockBackend::getBlockScope(const std::string& blockId) {
+  if (signal_ != nullptr) return signal_->scope(blockId);
+  // A still, amp-ish cycle: a fundamental and its harmonics, soft-clipped.
+  juce::Array<juce::var> points;
+  for (int i = 0; i < 96; ++i) {
+    const double t = i / 96.0 * 2.0 * juce::MathConstants<double>::pi * 2.2;
+    points.add(std::tanh(1.8 * (std::sin(t) + 0.35 * std::sin(2 * t + 0.4) + 0.2 * std::sin(3 * t))) * 0.7);
+  }
+  return points;
+}
+
 juce::var MockBackend::getBlockSpectrum(const std::string& blockId) {
   if (signal_ != nullptr) return signal_->spectrum(blockId);
   // The JS mock's static guitar-ish spectrum: low-mid hump falling off.
