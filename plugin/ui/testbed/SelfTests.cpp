@@ -2925,6 +2925,68 @@ struct RigTimeFxTests : juce::UnitTest {
   }
 };
 
+// A dual-IR cab's blend slider in the rig view sends the IR blend, like
+// the block card's Blend knob, without opening the block.
+struct RigDualIrTests : juce::UnitTest {
+  RigDualIrTests() : juce::UnitTest("Rig view dual IR", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("rig-neural-dualir");
+    if (scenario == nullptr) {
+      expect(false, "rig-neural-dualir scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("rig dual ir", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto* peer = host.getPeer();
+    auto& root = host.pluginRoot();
+    expect(peer != nullptr);
+    if (peer == nullptr) return;
+    auto* rig = dynamic_cast<RigView*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<RigView*>(&c) != nullptr && c.isShowing();
+    }));
+    expect(rig != nullptr && rig->modules().size() == 4);
+    if (rig == nullptr || rig->modules().size() != 4) return;
+    auto* cab = rig->modules()[2];
+    std::string opened;
+    rig->onOpenBlock = [&](const std::string& id) { opened = id; };
+    const float k = static_cast<float>(cab->getHeight()) / 170.0f;
+    // The slider runs across the grille's width (17..133) at y = 129.
+    const auto at = [&](float nominalX, bool down) {
+      const auto pos = peer->getComponent().getLocalPoint(cab, juce::Point<float>(nominalX, 129.0f) * k);
+      static auto time = juce::Time::currentTimeMillis();
+      peer->handleMouseEvent(juce::MouseInputSource::InputSourceType::mouse, pos,
+                             down ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(), 0.0f, 0.0f, ++time);
+      pump(10);
+    };
+
+    beginTest("dragging the blend slider toward B sends a higher blend and opens nothing");
+    at(52.0f, true);
+    for (float x = 56.0f; x <= 112.0f; x += 8.0f) at(x, true);
+    at(112.0f, false);
+    expectEquals(juce::String(backend.lastDualIr.blockId), juce::String("blk-3"));
+    expectEquals(backend.lastDualIr.param, juce::String("blend"));
+    expect(backend.lastDualIr.value > 0.7, "blend " + juce::String(backend.lastDualIr.value));
+    expect(opened.empty(), "the slider opened the block");
+
+    beginTest("a double-click on the slider goes back to 50/50");
+    for (int press = 0; press < 2; ++press) {
+      at(90.0f, true);
+      at(90.0f, false);
+    }
+    expectWithinAbsoluteError(backend.lastDualIr.value, 0.5, 1e-6);
+    expect(opened.empty(), "the double-click opened the block");
+    window.setVisible(false);
+  }
+};
+
 // Committing a typed CC number swaps the listening row for a mapping row of
 // the same height. The form host only re-flows on a height change, so the
 // card has to place its new rows itself or they sit at 0×0 and the card
@@ -3405,6 +3467,7 @@ RigStepTests rigStepTests;
 RigToneEqTests rigToneEqTests;
 RigScopeTests rigScopeTests;
 RigTimeFxTests rigTimeFxTests;
+RigDualIrTests rigDualIrTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;

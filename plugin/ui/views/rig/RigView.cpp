@@ -118,10 +118,12 @@ void sizeBadge(juce::Graphics& g, juce::Point<float> at, bool full) {
   g.drawText(text, chip, juce::Justification::centred, false);
 }
 
-void grille(juce::Graphics& g, juce::Rectangle<float> area) {
+// `lit` (0..1) tints the cells with the accent: a dual-IR cab lights each
+// half by its share of the blend.
+void grille(juce::Graphics& g, juce::Rectangle<float> area, float lit = 0.0f) {
   g.setColour(theme::kBlack.withAlpha(0.6f));
   g.fillRoundedRectangle(area, 4.0f);
-  const auto colour = theme::kGray.withAlpha(0.45f);
+  const auto colour = theme::kGray.withAlpha(0.45f).interpolatedWith(theme::kBrandYellow.withAlpha(0.8f), lit);
   g.setColour(colour);
   if (theme::kStyle.grille == theme::Grille::hex) {
     const float r = 5.0f, w = r * std::sqrt(3.0f);
@@ -168,11 +170,19 @@ public:
   void setItem(const ChainItem& item) {
     const bool newTone = item_.blockId == item.blockId && (item_.tone.id != item.tone.id || item_.activeModelId != item.activeModelId);
     const auto held = dragKnob_ >= 0 ? knobValue(knobs()[static_cast<size_t>(dragKnob_)]) : 0.0;
+    const float heldBlend = blend();
     item_ = item;
     if (dragKnob_ >= 0) knobValue(knobs()[static_cast<size_t>(dragKnob_)]) = held;  // the drag owns it
+    if (blendDrag_ && item_.dualIr) item_.dualIr->blend = heldBlend;
     bypassed_ = {};
     cursor_ = kind_ == Kind::fx ? std::nullopt : services_.stepper.cursor(item_.blockId);
     titleCut_ = kind_ != Kind::fx && isCut(titleText(), titleSpot());
+    if (dual()) {
+      // Each name has half the row: the tooltip carries both whenever either is cut.
+      auto half = titleSpot();
+      half.area = half.area.withWidth(half.area.getWidth() / 2).reduced(2, 0);
+      titleCut_ = isCut(titleText(), half) || isCut(item_.dualIr->bTitle, half);
+    }
     setHelpText(item.tone.title + ": click to open the block.");
     if (newTone && theme::kStyle.glitchOnLoad && theme::animate())
       glitchUntil_ = juce::Time::getMillisecondCounter() + kGlitchMs;
@@ -263,6 +273,12 @@ public:
   }
 
   void mouseDown(const juce::MouseEvent& e) override {
+    if (overBlend(e.position)) {
+      blendDrag_ = true;
+      setBlend((e.position.x / scale() - blendTrack().getX()) / blendTrack().getWidth());
+      showBlend();
+      return;
+    }
     dragKnob_ = kind_ == Kind::fx ? -1 : knobAt(e.position);
     if (dragKnob_ < 0) return;
     dragStartY_ = e.position.y;
@@ -271,6 +287,10 @@ public:
   }
 
   void mouseDrag(const juce::MouseEvent& e) override {
+    if (blendDrag_) {
+      setBlend((e.position.x / scale() - blendTrack().getX()) / blendTrack().getWidth());
+      return;
+    }
     if (dragKnob_ < 0) return;
     const float perUnit = kKnobDragPerUnit / (e.mods.isShiftDown() ? kKnobFine : 1.0f);
     // Shift mid-drag re-anchors, so the value doesn't jump.
@@ -283,6 +303,10 @@ public:
   }
 
   void mouseDoubleClick(const juce::MouseEvent& e) override {
+    if (overBlend(e.position)) {
+      setBlend(0.5f);
+      return;
+    }
     const int index = kind_ == Kind::fx ? -1 : knobAt(e.position);
     if (index < 0) return;
     setKnob(index, knobs()[static_cast<size_t>(index)].defaultValue);
@@ -290,6 +314,13 @@ public:
   }
 
   void mouseUp(const juce::MouseEvent& e) override {
+    if (blendDrag_) {
+      // A blend press never opens the block.
+      blendDrag_ = false;
+      if (!overBlend(e.position)) knobTip_.hide();
+      repaint();
+      return;
+    }
     if (dragKnob_ >= 0) {
       // A knob press never opens the block.
       dragKnob_ = -1;
@@ -332,6 +363,17 @@ public:
       repaint();
       return;
     }
+    if (const bool blend = overBlend(e.position); blend != hoverBlend_) {
+      hoverBlend_ = blend;
+      setHelpText(blend ? juce::String("IR blend: drag between IR A (left) and IR B (right). Double-click: 50/50.")
+                        : item_.tone.title + ": click to open the block.");
+      if (blend) showBlend();
+      else knobTip_.hide();
+      bypassed_ = {};
+      repaint();
+      if (blend) return;
+    }
+    if (hoverBlend_) return;
     const bool over = kind_ == Kind::pedal && overFootswitch(e.position);
     const int knob = kind_ == Kind::fx ? -1 : knobAt(e.position);
     const int arrow = kind_ == Kind::fx ? 0 : arrowAt(e.position);
@@ -368,6 +410,11 @@ public:
   }
 
   void mouseExit(const juce::MouseEvent&) override {
+    if (hoverBlend_ && !blendDrag_) {
+      hoverBlend_ = false;
+      bypassed_ = {};
+      repaint();
+    }
     if (hoverRow_ >= 0) {
       hoverRow_ = -1;
       bypassed_ = {};
@@ -687,12 +734,87 @@ private:
     fxDeck_->open(*this, Popover::Align::left, FxDeckPanel::kGap, inset, Popover::Placement::below);
   }
 
+  // A cab blending two IRs: the grille split into an A and a B half, each
+  // lit by its share of the blend, a blend slider under them and both names
+  // below. Nominal units.
+  bool dual() const { return kind_ == Kind::cab && item_.dualIr && item_.dualIr->hasB; }
+
+  juce::Rectangle<float> dualGrille() const {
+    const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(Kind::cab)), static_cast<float>(kModuleHeight)).reduced(1.0f);
+    return box.reduced(10).withTrimmedBottom(46);
+  }
+  juce::Rectangle<float> blendTrack() const {
+    const auto g = dualGrille();
+    return {g.getX() + 6, g.getBottom() + 5, g.getWidth() - 12, 10};
+  }
+  float blend() const { return item_.dualIr ? juce::jlimit(0.0f, 1.0f, item_.dualIr->blend) : 0.5f; }
+
+  void dualCab(juce::Graphics& g) {
+    const auto area = dualGrille();
+    const float b = blend();
+    grille(g, area.withWidth(area.getWidth() / 2 - 2), 0.15f + 0.6f * (1.0f - b));
+    grille(g, area.withTrimmedLeft(area.getWidth() / 2 + 2), 0.15f + 0.6f * b);
+    g.setFont(label(10, true));
+    for (const auto& [text, half] : {std::pair{"A", 0}, std::pair{"B", 1}}) {
+      const auto tag = juce::Rectangle<float>(14, 14).withPosition(half == 0 ? area.getX() + 4 : area.getRight() - 18, area.getY() + 4);
+      g.setColour(theme::kBlack.withAlpha(0.7f));
+      g.fillRoundedRectangle(tag, 3.0f);
+      g.setColour((half == 0 ? 1.0f - b : b) >= 0.5f ? theme::kBrandYellow : theme::kWhite);
+      g.drawText(text, tag, juce::Justification::centred, false);
+    }
+    // The blend slider: A on the left, B on the right.
+    const auto track = blendTrack();
+    const float y = track.getCentreY();
+    g.setColour(theme::kSegmentedTrack);
+    g.fillRoundedRectangle(track.withSizeKeepingCentre(track.getWidth(), 3.0f), 1.5f);
+    const float x = track.getX() + b * track.getWidth();
+    g.setColour(theme::kBrandYellow);
+    g.fillRoundedRectangle(juce::Rectangle<float>(track.getX(), y - 1.5f, x - track.getX(), 3.0f), 1.5f);
+    const bool hot = blendDrag_ || hoverBlend_;
+    if (hot && theme::kStyle.glow > 0.0f) {
+      g.setColour(theme::kBrandYellow.withAlpha(0.3f * theme::kStyle.glow));
+      g.fillEllipse(juce::Rectangle<float>(16, 16).withCentre({x, y}));
+    }
+    g.setColour(hot ? theme::kWhite : theme::kBrandYellow);
+    g.fillEllipse(juce::Rectangle<float>(9, 9).withCentre({x, y}));
+    // Both names, side by side under the slider (the arrows keep their ends).
+    auto names = titleSpot().area;
+    const auto halfW = names.getWidth() / 2;
+    g.setFont(label(10, true));
+    g.setColour(item_.params.enabled ? theme::kWhite : theme::kGray);
+    g.drawFittedText(titleText(), names.removeFromLeft(halfW).reduced(2, 0).toNearestInt(), juce::Justification::centred, 2, 0.8f);
+    g.drawFittedText(item_.dualIr->bTitle.isNotEmpty() ? item_.dualIr->bTitle : juce::String("IR B"),
+                     names.reduced(2, 0).toNearestInt(), juce::Justification::centred, 2, 0.8f);
+  }
+
+  bool overBlend(juce::Point<float> p) const {
+    return dual() && blendTrack().expanded(4.0f, 5.0f).contains(p / scale());
+  }
+
+  void setBlend(float value) {
+    value = juce::jlimit(0.0f, 1.0f, value);
+    if (!item_.dualIr || juce::approximatelyEqual(item_.dualIr->blend, value)) return;
+    item_.dualIr->blend = value;
+    services_.chain.setDualIrParam(item_.blockId, "blend", value);
+    bypassed_ = {};
+    repaint();
+    showBlend();
+  }
+
+  void showBlend() {
+    const int a = juce::roundToInt((1.0f - blend()) * 100.0f);
+    knobTip_.show(*this, blendTrack().transformedBy(juce::AffineTransform::scale(scale())),
+                  "A " + juce::String(a) + " %  ·  B " + juce::String(100 - a) + " %");
+  }
+
   TitleSpot titleSpot() const {
     const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(kind_)), static_cast<float>(kModuleHeight)).reduced(1.0f);
     switch (kind_) {
       case Kind::pedal: return {box.withTrimmedTop(74).withHeight(34).reduced(6, 0), 2};
       case Kind::amp: return {box.reduced(10).removeFromTop(34).reduced(cursor_ ? kArrowW + 4 : 6, 2), 2};
-      case Kind::cab: return {box.reduced(8).removeFromBottom(26).reduced(cursor_ ? kArrowW : 0, 0), 1};
+      case Kind::cab:
+        if (dual()) return {box.reduced(8).removeFromBottom(26).reduced(cursor_ ? kArrowW : 0, 0), 2};
+        return {box.reduced(8).removeFromBottom(26).reduced(cursor_ ? kArrowW : 0, 0), 1};
       case Kind::fx: break;
     }
     return {};
@@ -735,8 +857,9 @@ private:
     const auto now = juce::Time::getMillisecondCounter();
     const auto spot = titleSpot();
     if (!tip_.showing() && hoverKnob_ < 0 && dragKnob_ < 0 && now - hoverSince_ >= kTipDelayMs)
-      tip_.show(*this, spot.area.transformedBy(juce::AffineTransform::scale(scale())), titleText());
-    if (!theme::animate() || bypassed()) return;
+      tip_.show(*this, spot.area.transformedBy(juce::AffineTransform::scale(scale())),
+                dual() ? "A: " + titleText() + "   B: " + item_.dualIr->bTitle : titleText());
+    if (!theme::animate() || bypassed() || dual()) return;  // two names don't scroll
     const float travel = juce::jmax(0.0f, Fonts::width(label(12, true), titleText()) - spot.area.getWidth() + 8.0f);
     const float runS = travel / kMarqueeSpeed;
     const float cycle = 2.0f * (runS + kMarqueeRestS);
@@ -863,14 +986,13 @@ private:
       }
       case Kind::cab: {
         body(g, box, enabled && item_.loaded);
-        grille(g, box.reduced(10).withTrimmedBottom(32));
-        title(g);
-        arrows(g);
-        if (item_.dualIr && item_.dualIr->hasB) {
-          g.setColour(theme::kBrandYellow);
-          g.setFont(label(10, true));
-          g.drawText("2x IR", box.reduced(14).removeFromTop(14), juce::Justification::topRight, false);
+        if (dual()) {
+          dualCab(g);
+        } else {
+          grille(g, box.reduced(10).withTrimmedBottom(32));
+          title(g);
         }
+        arrows(g);
         break;
       }
       case Kind::fx: {
@@ -913,6 +1035,7 @@ private:
   // The Time FX unit: the row under the pointer, its animation clock and
   // the rack its rows open.
   int hoverRow_ = -1;
+  bool hoverBlend_ = false, blendDrag_ = false;  // a dual-IR cab's blend slider
   float fxTime_ = 0.0f, fxDt_ = 0.0f;
   bool fxFrame_ = false;
   std::unique_ptr<FxDeckPanel> fxDeck_;

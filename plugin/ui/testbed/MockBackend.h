@@ -50,7 +50,16 @@ public:
   bool setBlockSecondIr(const std::string&, const juce::String&) override { return true; }
   juce::var setBlockSecondIrFile(const std::string&, const juce::File&) override { return {}; }
   bool clearBlockSecondIr(const std::string&) override { return true; }
-  bool setBlockDualIrParam(const std::string&, const juce::String&, double) override { return true; }
+  // Records the last dual-IR edit (tests check where a blend drag landed).
+  bool setBlockDualIrParam(const std::string& blockId, const juce::String& param, double value) override {
+    lastDualIr = {blockId, param, value};
+    return true;
+  }
+  struct DualIrEdit {
+    std::string blockId;
+    juce::String param;
+    double value = 0;
+  } lastDualIr;
   bool refreshToneMetadata(const juce::String&) override { return true; }
   bool switchModel(const std::string&, int, const juce::var&) override { return true; }
   bool retryModelLoad(const std::string&) override { return true; }
