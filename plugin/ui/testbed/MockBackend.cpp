@@ -272,7 +272,8 @@ juce::var MockBackend::getBlockSpectrum(const std::string& blockId) {
   juce::Array<juce::var> bins;
   for (int i = 0; i < 64; ++i) {
     const double x = i / 63.0;
-    const double hump = -18 - 55 * std::pow(x - 0.28, 2) * 4;
+    const bool dry = blockId == "input";  // the DI: quieter, flatter
+    const double hump = dry ? -34 - 30 * std::pow(x - 0.35, 2) * 4 : -18 - 55 * std::pow(x - 0.28, 2) * 4;
     const double wiggle = 4 * std::sin(i * 1.7) * std::exp(-x * 1.5);
     bins.add(juce::jlimit(-100.0, -8.0, hump + wiggle));
   }

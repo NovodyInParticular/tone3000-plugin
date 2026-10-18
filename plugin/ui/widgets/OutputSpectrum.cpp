@@ -3,6 +3,7 @@
 #include "core/Fonts.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
+#include "widgets/Clickable.h"
 
 namespace t3k::ui {
 
@@ -12,23 +13,90 @@ constexpr float kTopDb = 0.0f, kBottomDb = -90.0f;  // the plotted range
 constexpr float kDbColumnWidth = 22.0f;              // the dB scale's labels
 }
 
-OutputSpectrum::OutputSpectrum(Backend& backend, UiClock& clock) : backend_(backend), clock_(clock) {
-  setInterceptsMouseClicks(false, false);
+// The "DRY IN" switch in the panel's top-right corner.
+class OutputSpectrum::Chip : public Clickable {
+public:
+  Chip() : Clickable("DRY IN") {
+    setClickingTogglesState(true);
+    setHelpText("Dry input: a faint second trace of the signal going into the rig, to compare with the output.");
+  }
+  void paintButton(juce::Graphics& g, bool over, bool) override {
+    const bool on = getToggleState();
+    const auto box = getLocalBounds().toFloat().reduced(0.5f);
+    g.setColour(on ? theme::kWhite.withAlpha(0.85f) : over ? theme::kMuted : theme::kSubtle);
+    g.drawRoundedRectangle(box, 3.0f, 1.0f);
+    g.setFont(Fonts::mono(9, on));
+    g.drawText(getButtonText(), getLocalBounds(), juce::Justification::centred, false);
+  }
+};
+
+OutputSpectrum::OutputSpectrum(Backend& backend, UiClock& clock)
+    : backend_(backend), clock_(clock), chip_(std::make_unique<Chip>()) {
+  setInterceptsMouseClicks(false, true);  // only the chip takes clicks
+  addAndMakeVisible(*chip_);
+  chip_->onClick = [this] {
+    if (onInputTraceChange) onInputTraceChange(chip_->getToggleState());
+    else setInputTrace(chip_->getToggleState());
+  };
   setRate("normal");
 }
 
-OutputSpectrum::~OutputSpectrum() { feed_.reset(); }
+OutputSpectrum::~OutputSpectrum() {
+  inputFeed_.reset();
+  feed_.reset();
+}
 
 void OutputSpectrum::setRate(const juce::String& rate) {
   const juce::String r = rate == "low" || rate == "off" ? rate : juce::String("normal");
   if (r == rate_ && (feed_ != nullptr) == (r != "off")) return;
   rate_ = r;
   feed_.reset();
-  if (rate_ != "off") {
-    feed_ = std::make_unique<SpectrumFeed>(backend_, clock_, kOutputId, rate_ == "low" ? kLowRateMs : 0);
+  inputFeed_.reset();
+  syncFeeds();
+}
+
+void OutputSpectrum::setInputTrace(bool on) {
+  chip_->setToggleState(on, juce::dontSendNotification);
+  if (on == inputTrace_) return;
+  inputTrace_ = on;
+  syncFeeds();
+}
+
+// One feed per shown trace; a feed switches its native tap on for as long
+// as it lives.
+void OutputSpectrum::syncFeeds() {
+  const bool live = rate_ != "off";
+  const int interval = rate_ == "low" ? kLowRateMs : 0;
+  if (live && feed_ == nullptr) {
+    feed_ = std::make_unique<SpectrumFeed>(backend_, clock_, kOutputId, interval);
     feed_->onChange = [this] { repaint(); };
   }
+  if (!live) feed_.reset();
+  if (live && inputTrace_ && inputFeed_ == nullptr) {
+    inputFeed_ = std::make_unique<SpectrumFeed>(backend_, clock_, kInputId, interval);
+    inputFeed_->onChange = [this] { repaint(); };
+  }
+  if (!live || !inputTrace_) inputFeed_.reset();
+  chip_->setVisible(live);
   repaint();
+}
+
+void OutputSpectrum::resized() {
+  const auto inner = getLocalBounds().reduced(10, 8);
+  chip_->setBounds(inner.getRight() - 46, inner.getY(), 46, 14);
+}
+
+juce::Path OutputSpectrum::tracePath(const std::vector<float>& bins) const {
+  const auto plot = plotArea();
+  juce::Path line;
+  for (size_t i = 0; i < bins.size(); ++i) {
+    const float x = plot.getX() + plot.getWidth() * static_cast<float>(i) / static_cast<float>(bins.size() - 1);
+    const float t = juce::jlimit(0.0f, 1.0f, (bins[i] - kBottomDb) / (kTopDb - kBottomDb));
+    const float y = plot.getBottom() - t * plot.getHeight();
+    if (i == 0) line.startNewSubPath(x, y);
+    else line.lineTo(x, y);
+  }
+  return line;
 }
 
 juce::Rectangle<float> OutputSpectrum::plotArea() const {
@@ -92,18 +160,18 @@ void OutputSpectrum::paintBackdrop(juce::Graphics& g) const {
 void OutputSpectrum::paint(juce::Graphics& g) {
   paintBackdrop(g);
   const auto plot = plotArea();
-  if (feed_ == nullptr) return;
-  const auto& bins = feed_->bins();
-  if (bins.size() < 2) return;
-
-  juce::Path line;
-  for (size_t i = 0; i < bins.size(); ++i) {
-    const float x = plot.getX() + plot.getWidth() * static_cast<float>(i) / static_cast<float>(bins.size() - 1);
-    const float t = juce::jlimit(0.0f, 1.0f, (bins[i] - kBottomDb) / (kTopDb - kBottomDb));
-    const float y = plot.getBottom() - t * plot.getHeight();
-    if (i == 0) line.startNewSubPath(x, y);
-    else line.lineTo(x, y);
+  // The dry input: a faint line over the output's fill, under its trace.
+  const auto ghost = [&] {
+    if (inputFeed_ == nullptr || inputFeed_->bins().size() < 2) return;
+    g.setColour(theme::kWhite.withAlpha(0.38f));
+    g.strokePath(tracePath(inputFeed_->bins()),
+                 juce::PathStrokeType(1.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+  };
+  if (feed_ == nullptr || feed_->bins().size() < 2) {
+    ghost();
+    return;
   }
+  const juce::Path line = tracePath(feed_->bins());
   juce::Path fill(line);
   fill.lineTo(plot.getRight(), plot.getBottom());
   fill.lineTo(plot.getX(), plot.getBottom());
@@ -111,6 +179,7 @@ void OutputSpectrum::paint(juce::Graphics& g) {
   g.setGradientFill(juce::ColourGradient::vertical(theme::kBrandYellow.withAlpha(0.28f), plot.getY(),
                                                    theme::kBrandYellow.withAlpha(0.0f), plot.getBottom()));
   g.fillPath(fill);
+  ghost();
   if (const float glow = theme::kStyle.glow; glow > 0.0f) {
     g.setColour(theme::kBrandYellow.withAlpha(0.18f * glow));
     g.strokePath(line, juce::PathStrokeType(5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));

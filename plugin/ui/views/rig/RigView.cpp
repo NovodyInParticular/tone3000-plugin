@@ -713,6 +713,8 @@ RigView::RigView(Services& services)
   addAndMakeVisible(spectrum_);
   addAndMakeVisible(cpu_);
   spectrum_.setRate(services_.prefs.get(UiPrefs::kSpectrumRate, "normal"));
+  spectrum_.setInputTrace(services_.prefs.getBool(UiPrefs::kSpectrumInputTrace, false));
+  spectrum_.onInputTraceChange = [this](bool on) { services_.prefs.setBool(UiPrefs::kSpectrumInputTrace, on); };
   services_.chain.addListener(this);
   services_.prefs.addListener(this);
   services_.clock.addListener(this);
@@ -730,6 +732,8 @@ void RigView::prefChanged(const juce::String& key) {
     spectrum_.setRate(services_.prefs.get(UiPrefs::kSpectrumRate, "normal"));
     resized();
   }
+  if (key == UiPrefs::kSpectrumInputTrace)
+    spectrum_.setInputTrace(services_.prefs.getBool(UiPrefs::kSpectrumInputTrace, false));
 }
 
 void RigView::tick() {

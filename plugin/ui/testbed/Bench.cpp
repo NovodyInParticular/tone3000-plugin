@@ -168,6 +168,7 @@ std::vector<Phase> phases() {
   list.push_back({"stereo", "stereo lanes playing: both chains, correlation meter", "main-stereo"});
   list.push_back({"rig-neural", "rig view playing, Neural skin: pulses, glow, output analyser at 30 fps", "rig-neural"});
   list.push_back({"rig-minimal", "rig view playing, Minimal skin: no animation, flat drawing", "rig-minimal"});
+  list.push_back({"rig-dry", "rig view playing, Neural skin, with the dry input traced under the output", "rig-neural-dry"});
   list.push_back({"detail", "block detail card playing", "main-detail", true, false, scenarioDrive("main-detail")});
   list.push_back({"eq-curve", "EQ curve view playing: the live output spectrum at 30 fps", "main-detail-eq-curve",
                   true, false, scenarioDrive("main-detail-eq-curve")});

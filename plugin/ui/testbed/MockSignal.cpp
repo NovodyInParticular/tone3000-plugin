@@ -98,7 +98,8 @@ juce::var MockSignal::meters(const juce::var& chain) {
               {"correlation", stereo ? 0.72 + 0.2 * std::sin(t * 0.37) + jitter(0.03f) : 1.0}});
 }
 
-juce::var MockSignal::spectrum(const std::string&) {
+juce::var MockSignal::spectrum(const std::string& blockId) {
+  const bool dry = blockId == "input";  // the DI: quieter, no cab rolloff
   const auto s = now();
   const double f0 = s.note != nullptr ? s.note->hz : 110.0;
   // Harmonics of the sounding note (falling ~1/h, the upper ones dying
@@ -114,8 +115,8 @@ juce::var MockSignal::spectrum(const std::string&) {
       const double weight = (h <= 3 ? 1.0 : upper) / std::pow(h, 1.1);
       energy += weight * std::exp(-0.5 * octaves * octaves);
     }
-    double db = s.levelDb + 6.0 + 10.0 * std::log10(energy);
-    if (f > 4500) db -= 18.0 * std::log2(f / 4500);
+    double db = s.levelDb + (dry ? -6.0 : 6.0) + 10.0 * std::log10(energy);
+    if (f > 4500 && !dry) db -= 18.0 * std::log2(f / 4500);
     bins.add(juce::jlimit(-100.0, -3.0, db + jitter(1.5f)));
   }
   return bins;
