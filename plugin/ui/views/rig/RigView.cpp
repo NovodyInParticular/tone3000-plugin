@@ -95,6 +95,24 @@ void footswitch(juce::Graphics& g, bool on) {
   }
 }
 
+// The NAM A2 size the block runs: FULL outlined, LITE filled (as the
+// gallery's LITE chip), top-left at `at`.
+void sizeBadge(juce::Graphics& g, juce::Point<float> at, bool full) {
+  const juce::String text = full ? "FULL" : "LITE";
+  const auto font = Fonts::mono(9, true);
+  const auto chip = juce::Rectangle<float>(at.x, at.y, Fonts::width(font, text) + 8.0f, 13.0f);
+  if (full) {
+    g.setColour(theme::kBrandYellow.withAlpha(0.8f));
+    g.drawRoundedRectangle(chip.reduced(0.5f), 3.0f, 1.0f);
+  } else {
+    g.setColour(theme::kBrandYellow);
+    g.fillRoundedRectangle(chip, 3.0f);
+  }
+  g.setColour(full ? theme::kBrandYellow : theme::kBlack);
+  g.setFont(font);
+  g.drawText(text, chip, juce::Justification::centred, false);
+}
+
 void grille(juce::Graphics& g, juce::Rectangle<float> area) {
   g.setColour(theme::kBlack.withAlpha(0.6f));
   g.fillRoundedRectangle(area, 4.0f);
@@ -444,6 +462,8 @@ private:
     }
   }
 
+  bool showsSize() const { return item_.tone.isNam() && item_.loaded; }
+
   bool bypassed() const { return kind_ == Kind::fx ? fxBits_ == 0 : !item_.params.enabled; }
   bool overFootswitch(juce::Point<float> p) const {
     const float scale = static_cast<float>(getHeight()) / static_cast<float>(kModuleHeight);
@@ -502,6 +522,7 @@ private:
         for (const auto& k : knobs()) miniKnob(g, k.centre, k.size, static_cast<float>(knobValue(k)), k.name);
         title(g);
         footswitch(g, enabled);
+        if (showsSize()) sizeBadge(g, {box.getX() + 7, box.getY() + 7}, isSlimSizeFull(item_.params.slimSize));
         break;
       }
       case Kind::amp: {
@@ -513,6 +534,7 @@ private:
         title(g);
         // Knobs.
         for (const auto& k : knobs()) miniKnob(g, k.centre, k.size, static_cast<float>(knobValue(k)), k.name);
+        if (showsSize()) sizeBadge(g, {box.getX() + 12, box.getY() + 109}, isSlimSizeFull(item_.params.slimSize));
         // Pulse: a trace whose swing follows the block's output level.
         auto scope = box.reduced(12).removeFromBottom(30);
         g.setColour(theme::kBlack.withAlpha(0.5f));
@@ -593,8 +615,10 @@ private:
   HoverTip knobTip_;
 };
 
-RigView::RigView(Services& services) : services_(services), spectrum_(services.backend, services.clock) {
+RigView::RigView(Services& services)
+    : services_(services), spectrum_(services.backend, services.clock), cpu_(services.meters) {
   addAndMakeVisible(spectrum_);
+  addAndMakeVisible(cpu_);
   spectrum_.setRate(services_.prefs.get(UiPrefs::kSpectrumRate, "normal"));
   services_.chain.addListener(this);
   services_.prefs.addListener(this);
@@ -664,6 +688,8 @@ void RigView::rebuild() {
 
 void RigView::resized() {
   auto area = getLocalBounds().reduced(kPad, 12);
+  cpu_.setBounds(area.getX(), area.getY(), CpuMeter::kWidth, CpuMeter::kHeight);
+  area.removeFromTop(CpuMeter::kHeight + 4);
   const bool spectrumShown = services_.prefs.get(UiPrefs::kSpectrumRate, "normal") != "off";
   spectrum_.setVisible(spectrumShown);
   if (spectrumShown) {

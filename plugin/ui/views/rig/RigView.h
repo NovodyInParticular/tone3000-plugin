@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "services/Services.h"
+#include "widgets/CpuMeter.h"
 #include "widgets/OutputSpectrum.h"
 
 namespace t3k::ui {
@@ -46,6 +47,7 @@ private:
   std::vector<std::unique_ptr<Module>> modules_;
   std::unique_ptr<Module> fx_;
   OutputSpectrum spectrum_;
+  CpuMeter cpu_;
   bool stereo_ = false;
   int rowCount_ = 1;
 };

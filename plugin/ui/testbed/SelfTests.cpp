@@ -2606,7 +2606,9 @@ struct RigBypassTests : juce::UnitTest {
     if (rig == nullptr) return;
     juce::Component* pedal = nullptr;  // the leftmost module: blk-1, the pedal
     for (auto* c : rig->getChildren())
-      if (dynamic_cast<OutputSpectrum*>(c) == nullptr && (pedal == nullptr || c->getX() < pedal->getX())) pedal = c;
+      if (dynamic_cast<OutputSpectrum*>(c) == nullptr && dynamic_cast<CpuMeter*>(c) == nullptr
+          && (pedal == nullptr || c->getX() < pedal->getX()))
+        pedal = c;
     expect(pedal != nullptr);
     if (pedal == nullptr) return;
     auto enabled = [&] {
@@ -2639,7 +2641,7 @@ struct RigBypassTests : juce::UnitTest {
     // Modules left to right: pedal, amp, cab (the Time FX unit is last).
     std::vector<juce::Component*> modules;
     for (auto* c : rig->getChildren())
-      if (dynamic_cast<OutputSpectrum*>(c) == nullptr) modules.push_back(c);
+      if (dynamic_cast<OutputSpectrum*>(c) == nullptr && dynamic_cast<CpuMeter*>(c) == nullptr) modules.push_back(c);
     std::sort(modules.begin(), modules.end(), [](auto* a, auto* b) { return a->getX() < b->getX(); });
     expect(modules.size() == 4);
     if (modules.size() != 4) return;
