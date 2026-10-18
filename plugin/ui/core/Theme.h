@@ -85,6 +85,11 @@ struct Style {
   juce::Colour background{0xff000000};  // behind the chain
 };
 inline Style kStyle;
+// The "Reduce animations" setting (UiPrefs::kReduceAnimations), machine-wide
+// like the skin: turns off every moving visual whatever the skin asks for.
+inline bool kReduceMotion = false;
+// Whether moving visuals (pulses, marquees, live mini visuals) should run.
+inline bool animate() { return kStyle.animations && !kReduceMotion; }
 // Bumped whenever a skin is applied; caches of rendered artwork key on it.
 inline int kGeneration = 0;
 

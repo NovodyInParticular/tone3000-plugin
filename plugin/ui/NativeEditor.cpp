@@ -227,10 +227,13 @@ void NativeEditor::fitRoot() {
 
 void NativeEditor::paint(juce::Graphics& g) { g.fillAll(theme::kBlack); }
 
-NativeEditor::SkinReady::SkinReady(UiPrefs& prefs) { skin::apply(prefs.get(UiPrefs::kSkin)); }
+NativeEditor::SkinReady::SkinReady(UiPrefs& prefs) {
+  skin::apply(prefs.get(UiPrefs::kSkin));
+  theme::kReduceMotion = prefs.getBool(UiPrefs::kReduceAnimations, false);
+}
 
 void NativeEditor::prefChanged(const juce::String& key) {
-  if (key != UiPrefs::kSkin) return;
+  if (key != UiPrefs::kSkin && key != UiPrefs::kReduceAnimations) return;
   // Not from inside the listener call: the picker that wrote the pref lives
   // in the tree being replaced.
   juce::Component::SafePointer<NativeEditor> self(this);
@@ -241,6 +244,7 @@ void NativeEditor::prefChanged(const juce::String& key) {
 
 void NativeEditor::rebuildRoot() {
   skin::apply(prefs_.get(UiPrefs::kSkin));
+  theme::kReduceMotion = prefs_.getBool(UiPrefs::kReduceAnimations, false);
   const bool settingsOpen = root_->settings() != nullptr;
   removeChildComponent(root_.get());
   root_.reset();

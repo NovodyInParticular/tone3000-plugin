@@ -104,7 +104,7 @@ public:
     const bool newTone = item_.blockId == item.blockId && (item_.tone.id != item.tone.id || item_.activeModelId != item.activeModelId);
     item_ = item;
     setHelpText(item.tone.title + ": click to open the block.");
-    if (newTone && theme::kStyle.glitchOnLoad && theme::kStyle.animations)
+    if (newTone && theme::kStyle.glitchOnLoad && theme::animate())
       glitchUntil_ = juce::Time::getMillisecondCounter() + kGlitchMs;
     repaint();
   }
@@ -131,7 +131,7 @@ public:
       repaint();
       return;
     }
-    if (!theme::kStyle.animations || kind_ != Kind::amp) return;
+    if (!theme::animate() || kind_ != Kind::amp) return;
     phase_ += 0.18f;
     // Only the pulse trace moves.
     const float scale = static_cast<float>(getHeight()) / static_cast<float>(kModuleHeight);
@@ -170,7 +170,7 @@ private:
 
   void meterChanged(const juce::String& id) override {
     if (kind_ == Kind::fx || id != MeterStore::blockOutId(item_.blockId)) return;
-    if (kind_ == Kind::amp && theme::kStyle.animations) return;  // the tick repaints amps
+    if (kind_ == Kind::amp && theme::animate()) return;  // the tick repaints amps
     repaint();
   }
 

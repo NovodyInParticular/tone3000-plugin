@@ -68,6 +68,8 @@ public:
   static constexpr const char* kChainView = "t3k.chainView";
   // Rig-view output analyser refresh: "normal" (default), "low" or "off".
   static constexpr const char* kSpectrumRate = "t3k.spectrumRate";
+  // "true": no pulses, marquees or animated visuals on any skin (low-power machines).
+  static constexpr const char* kReduceAnimations = "t3k.reduceAnimations";
   static constexpr const char* kShowPresetPcNumbers = "t3k.showPresetPcNumbers";
   static constexpr const char* kTokens = "t3k_tokens";
   static constexpr const char* kCachedUser = "t3k.cachedUser";

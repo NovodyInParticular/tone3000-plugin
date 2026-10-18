@@ -1043,6 +1043,18 @@ struct SkinTests : juce::UnitTest {
       expect(dir.getFullPathName().endsWith("tone3000/skins"), dir.getFullPathName());
 #endif
     }
+
+    beginTest("reduce animations stills every skin; Minimal is still on its own");
+    {
+      skin::apply("neural");
+      expect(theme::animate());
+      theme::kReduceMotion = true;
+      expect(!theme::animate());
+      theme::kReduceMotion = false;
+      skin::apply("minimal");
+      expect(!theme::animate());
+      skin::apply("classic");
+    }
   }
 };
 

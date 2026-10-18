@@ -92,6 +92,9 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       openSkins_("Open skins folder", FormButton::text(form::kBodyPx, false, theme::kLinkBlue)),
       openSkinsBox_(openSkins_, static_cast<float>(openSkins_.preferredHeight())),
       spectrumLabel_("Rig view analyser", form::kBodyPx, false, theme::kMuted),
+      reduceAnimations_("Reduce animations",
+                        "Turns off cable pulses, scrolling names and animated visuals on every skin. "
+                        "Saves CPU on slower machines."),
       infoBar_("Show Info Bar",
                "Shows help text on hover explaining what elements do, plus keyboard shortcuts and a CPU meter."),
       showGate_("Show Gate", "Reduces unwanted noise like hum and hiss while you're playing."),
@@ -202,6 +205,8 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
     };
     add(skin_);
   }
+  reduceAnimations_.onChange = [this](bool on) { services_.prefs.setBool(UiPrefs::kReduceAnimations, on); };
+  add(reduceAnimations_);
 
   // Info Bar.
   infoBar_.onChange = [this](bool on) { services_.hints.setEnabled(on); };
@@ -342,7 +347,7 @@ PluginSettingsPage::~PluginSettingsPage() {
 
 void PluginSettingsPage::prefChanged(const juce::String& key) {
   if (key == UiPrefs::kShowHints || key == UiPrefs::kShowGateControl || key == UiPrefs::kShowPitchControl ||
-      key == UiPrefs::kShowTimeFxControl ||
+      key == UiPrefs::kShowTimeFxControl || key == UiPrefs::kReduceAnimations ||
       key == UiPrefs::kShowBlockSizeControl || key == UiPrefs::kShowBlockNormalizeControl)
     syncPrefs();
 }
@@ -352,6 +357,7 @@ void PluginSettingsPage::syncPrefs() {
   showGate_.setValue(services_.prefs.getBool(UiPrefs::kShowGateControl, true));
   showPitch_.setValue(services_.prefs.getBool(UiPrefs::kShowPitchControl, false));
   showTimeFx_.setValue(services_.prefs.getBool(UiPrefs::kShowTimeFxControl, true));
+  reduceAnimations_.setValue(services_.prefs.getBool(UiPrefs::kReduceAnimations, false));
   const bool size = services_.prefs.getBool(UiPrefs::kShowBlockSizeControl, false);
   blockSize_.setValue(size);
   blockSize_.setExpanded(size);

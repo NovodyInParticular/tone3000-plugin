@@ -52,6 +52,7 @@ private:
   FormBox openSkinsBox_;
   FormLabel spectrumLabel_;
   SelectField spectrumRate_{"Rig view analyser"};
+  ToggleRow reduceAnimations_;
 
   ToggleRow infoBar_;
   // View-only toggles for the faceplate's gate / pitch groups; the
