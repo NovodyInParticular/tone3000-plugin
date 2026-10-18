@@ -772,6 +772,7 @@ void TONE3000Processor::prepareBlockForChainRate(ChainBlock& block) {
   const double chainRate = chainSampleRate();
   block.eq.prepare(chainRate);
   block.spectrum.prepare(chainRate);
+  block.scope.prepare(chainRate);
 }
 
 // See the declaration. Both lanes are scanned regardless of stereo mode:
@@ -1409,6 +1410,9 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
         block->spectrum.pushSamples(buffer.getReadPointer(0),
                                     numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
                                     numSamples, rtDualMono);
+      if (block->scope.isEnabled())
+        block->scope.pushSamples(buffer.getReadPointer(0), numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
+                                 numSamples);
       continue;
     }
 
@@ -1715,6 +1719,10 @@ void TONE3000Processor::processChainOnBuffer(std::vector<std::unique_ptr<ChainBl
       block->spectrum.pushSamples(buffer.getReadPointer(0),
                                   numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
                                   numSamples, rtDualMono);
+    // The rig view's waveform of this block, while it shows.
+    if (block->scope.isEnabled())
+      block->scope.pushSamples(buffer.getReadPointer(0), numChannels > 1 ? buffer.getReadPointer(1) : nullptr,
+                               numSamples);
   }
 }
 

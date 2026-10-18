@@ -382,7 +382,12 @@ public:
   // when disabled the audio thread does no analyzer work for that block.
   bool setBlockSpectrumEnabled(const std::string& blockId, bool enabled);
   juce::var getBlockSpectrum(const std::string& blockId);
-  // Editor teardown: one call instead of one per open EQ view.
+  // Per-block waveform for the rig view's amp scope (BlockScope): enabled
+  // while the rig view shows the block, polled at the UI frame rate.
+  bool setBlockScopeEnabled(const std::string& blockId, bool enabled);
+  juce::var getBlockScope(const std::string& blockId);
+  // Editor teardown: one call instead of one per open EQ view (also turns
+  // every block scope off).
   void disableAllBlockSpectrums();
 
   // Stereo mode: two independent Left/Right chains.

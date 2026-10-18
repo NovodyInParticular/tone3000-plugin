@@ -25,6 +25,7 @@ target_sources(DspTests PRIVATE
     src/input_calibration_tests.cpp
     src/rig_share_tests.cpp
     src/output_spectrum_tests.cpp
+    src/block_scope_tests.cpp
     src/branch_tests.cpp
     src/clipboard_tests.cpp
     src/dsp_tests.cpp
@@ -57,6 +58,7 @@ target_sources(DspTests PRIVATE
     # compiles the processor exactly like the headless plugin build.
     ../plugin/src/AutoOffset.cpp
     ../plugin/src/BlockEq.cpp
+    ../plugin/src/BlockScope.cpp
     ../plugin/src/BlockSpectrum.cpp
     ../plugin/src/LegacyParamIds.cpp
     ../plugin/src/MidiMapper.cpp

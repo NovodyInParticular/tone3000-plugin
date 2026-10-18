@@ -319,6 +319,8 @@ target_sources(${PROJECT_NAME}
     PRIVATE
         include/BlockEq.h
         src/BlockEq.cpp
+        include/BlockScope.h
+        src/BlockScope.cpp
         include/BlockSpectrum.h
         src/BlockSpectrum.cpp
         include/ChainBlock.h

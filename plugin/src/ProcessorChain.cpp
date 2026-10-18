@@ -1752,8 +1752,29 @@ juce::var TONE3000Processor::getBlockSpectrum(const std::string& blockId) {
 void TONE3000Processor::disableAllBlockSpectrums() {
   juce::ScopedLock lock(chainMutex);
   for (auto& chain : lanes)
-    for (auto& block : chain)
+    for (auto& block : chain) {
       block->spectrum.setEnabled(false);
+      block->scope.setEnabled(false);
+    }
+}
+
+bool TONE3000Processor::setBlockScopeEnabled(const std::string& blockId, bool enabled) {
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type == ChainBlockType::INSERT)
+    return false;
+  block->scope.setEnabled(enabled);
+  return true;
+}
+
+juce::var TONE3000Processor::getBlockScope(const std::string& blockId) {
+  // Reading the ring is cheap; the lock only covers the block lookup and the
+  // block's lifetime while it's read.
+  juce::ScopedLock lock(chainMutex);
+  ChainBlock* block = findBlockById(blockId);
+  if (block == nullptr || block->type == ChainBlockType::INSERT)
+    return {};
+  return block->scope.getWaveform();
 }
 
 void TONE3000Processor::setAccessToken(const juce::String& token) {

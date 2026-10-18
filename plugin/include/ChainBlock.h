@@ -10,6 +10,7 @@
 #include "BlockEq.h"
 #include "BrowseContext.h"
 #include "DualIr.h"
+#include "BlockScope.h"
 #include "BlockSpectrum.h"
 #include "ChainOversampler.h"
 #include "NamEngine.h"
@@ -346,6 +347,10 @@ struct ChainBlock {
   // Spectrum analyzer for the EQ editor backdrop. Only fed by the audio thread
   // while the UI has this block's EQ view open (atomic enabled flag).
   BlockSpectrum spectrum;
+
+  // Waveform tap for the rig view's amp scope. Only fed while the rig view
+  // shows this block (atomic enabled flag).
+  BlockScope scope;
 
   ChainBlock(const std::string& blockId, ChainBlockType blockType)
       : id(blockId), type(blockType), toneId(0), activeModelId(0), loaded(false),
