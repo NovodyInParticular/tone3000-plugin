@@ -46,6 +46,7 @@
 #include "views/gallery/GalleryGeometry.h"
 #include "views/gallery/GalleryTile.h"
 #include "views/FxDeckPanel.h"
+#include "views/TunerView.h"
 #include "views/rig/RigView.h"
 #include "views/rig/ToneEqOverlay.h"
 #include "widgets/CpuMeter.h"
@@ -2987,6 +2988,95 @@ struct RigDualIrTests : juce::UnitTest {
   }
 };
 
+// The tuner in the rig view takes the analyser's place instead of the
+// whole chain band; elsewhere it still takes over.
+struct RigTunerTests : juce::UnitTest {
+  RigTunerTests() : juce::UnitTest("Rig view tuner", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("rig-neural");
+    const auto* gallery = fixtures.find("main-mono");
+    if (scenario == nullptr || gallery == nullptr) {
+      expect(false, "rig-neural / main-mono scenario missing");
+      return;
+    }
+    const auto takeover = [](PluginRoot& root) {
+      return drive::find(root, [](juce::Component& c) { return dynamic_cast<TunerView*>(&c) != nullptr; });
+    };
+    {
+      MockBackend backend(scenario->data);
+      juce::DocumentWindow window("rig tuner", juce::Colours::black, 0);
+      ScaledHost host(backend, *scenario, fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(400);
+      auto* peer = host.getPeer();
+      auto& root = host.pluginRoot();
+      auto* rig = dynamic_cast<RigView*>(drive::find(root, [](juce::Component& c) {
+        return dynamic_cast<RigView*>(&c) != nullptr && c.isShowing();
+      }));
+      expect(peer != nullptr && rig != nullptr);
+      if (peer == nullptr || rig == nullptr) return;
+
+      beginTest("in the rig view the tuner takes the analyser's place, the rig stays");
+      root.setTunerShown(true);
+      pump(100);
+      expect(root.tunerShown());
+      expect(rig->tuner() != nullptr && rig->tuner()->isShowing(), "no rig tuner");
+      expect(takeover(root) == nullptr, "the full takeover came up too");
+      expect(rig->modules().front()->isShowing(), "the rig went out of sight");
+      expect(!rig->toneEq().isVisible(), "the EQ curve stayed over the tuner");
+
+      beginTest("its close button closes it and brings the analyser back");
+      auto& close = *rig->tuner()->getChildComponent(0);
+      const auto pos = peer->getComponent().getLocalPoint(&close, close.getLocalBounds().getCentre().toFloat());
+      const auto now = juce::Time::currentTimeMillis();
+      using Type = juce::MouseInputSource::InputSourceType;
+      peer->handleMouseEvent(Type::mouse, pos, juce::ModifierKeys::leftButtonModifier, 0.0f, 0.0f, now);
+      peer->handleMouseEvent(Type::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f, now + 1);
+      pump(100);
+      expect(!root.tunerShown(), "still on");
+      expect(rig->tuner() == nullptr);
+      expect(rig->toneEq().isVisible(), "the analyser didn't come back");
+
+      beginTest("switching to the gallery with the tuner up closes it");
+      root.setTunerShown(true);
+      pump(50);
+      auto* galleryButton = dynamic_cast<ChromeTextButton*>(drive::find(root, [](juce::Component& c) {
+        auto* b = dynamic_cast<ChromeTextButton*>(&c);
+        return b != nullptr && b->getButtonText() == "GALLERY" && c.isShowing();
+      }));
+      expect(galleryButton != nullptr, "no GALLERY button");
+      if (galleryButton == nullptr) return;
+      galleryButton->triggerClick();
+      pump(300);
+      expect(!root.tunerShown(), "the tuner outlived the rig view");
+      window.setVisible(false);
+    }
+    {
+      MockBackend backend(gallery->data);
+      juce::DocumentWindow window("gallery tuner", juce::Colours::black, 0);
+      ScaledHost host(backend, *gallery, fixtures.root);
+      window.setContentNonOwned(&host, true);
+      window.setVisible(true);
+      pump(400);
+      auto& root = host.pluginRoot();
+
+      beginTest("in the gallery the tuner still takes over");
+      root.setTunerShown(true);
+      pump(100);
+      expect(takeover(root) != nullptr);
+      root.setTunerShown(false);
+      pump(50);
+      expect(takeover(root) == nullptr);
+      window.setVisible(false);
+    }
+  }
+};
+
 // Committing a typed CC number swaps the listening row for a mapping row of
 // the same height. The form host only re-flows on a height change, so the
 // card has to place its new rows itself or they sit at 0×0 and the card
@@ -3468,6 +3558,7 @@ RigToneEqTests rigToneEqTests;
 RigScopeTests rigScopeTests;
 RigTimeFxTests rigTimeFxTests;
 RigDualIrTests rigDualIrTests;
+RigTunerTests rigTunerTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;

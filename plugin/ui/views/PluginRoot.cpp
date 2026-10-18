@@ -352,8 +352,40 @@ void PluginRoot::handleBannerAction(BannerAction action) {
 }
 
 // Takeovers
+namespace {
+// The rig view when it is what the chain area shows (reached through
+// visible components only, so it is on screen once the window is).
+RigView* showingRigView(juce::Component& root) {
+  if (auto* rig = dynamic_cast<RigView*>(&root); rig != nullptr && rig->isVisible()) return rig;
+  for (auto* child : root.getChildren())
+    if (child->isVisible())
+      if (auto* rig = showingRigView(*child)) return rig;
+  return nullptr;
+}
+}  // namespace
+
 void PluginRoot::setTunerShown(bool shown) {
   if (shown == tunerShown()) return;
+  // In the rig view the tuner takes the analyser's place and the rig stays
+  // in sight; anywhere else (or with the analyser off) it takes over.
+  if (shown) {
+    if (auto* rig = showingRigView(main_); rig != nullptr && rig->canShowTuner()) {
+      rigTuner_ = true;
+      tunerRig_ = rig;
+      juce::Component::SafePointer<PluginRoot> self(this);
+      rig->showTuner([self] {
+        if (self != nullptr) self->setTunerShown(false);
+      });
+      header_.setTunerShown(true);
+      return;
+    }
+  } else if (rigTuner_) {
+    rigTuner_ = false;
+    if (auto* rig = tunerRig_.getComponent()) rig->hideTuner();
+    tunerRig_ = nullptr;
+    header_.setTunerShown(false);
+    return;
+  }
   if (shown) {
     tuner_ = std::make_unique<TunerView>(services_);
     tuner_->onClose = [this] { setTunerShown(false); };

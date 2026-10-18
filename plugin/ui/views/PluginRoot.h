@@ -44,6 +44,7 @@
 #include "LiteSuggestionView.h"
 #include "ToastView.h"
 #include "TunerView.h"
+#include "rig/RigView.h"
 #include "browser/ToneBrowser.h"
 #include "core/DelayedCall.h"
 #include "modals/ConnectionModal.h"
@@ -80,7 +81,7 @@ public:
   // The tuner takeover replaces the meters + chain band; the pitch
   // detector runs only while it is up.
   void setTunerShown(bool shown);
-  bool tunerShown() const { return tuner_ != nullptr; }
+  bool tunerShown() const { return tuner_ != nullptr || rigTuner_; }
   // The tone browser takeover covers everything under the header (meters,
   // chain and faceplate); mounted only while open. A tuner opened over it
   // hides it until the tuner closes.
@@ -150,6 +151,10 @@ private:
   std::unique_ptr<ToneBrowser> browser_;
   std::unique_ptr<SignInScreen> signIn_;
   std::unique_ptr<TunerView> tuner_;
+  // The tuner is up in a rig view's analyser place instead of taking over;
+  // that view (it may go away first, which closes the tuner).
+  bool rigTuner_ = false;
+  juce::Component::SafePointer<RigView> tunerRig_;
   std::unique_ptr<SettingsScreen> settings_;
   Faceplate faceplate_;
   AppBanner banner_;

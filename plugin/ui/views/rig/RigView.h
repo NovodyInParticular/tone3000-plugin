@@ -18,6 +18,7 @@
 
 #include "services/Services.h"
 #include "widgets/CpuMeter.h"
+#include "views/rig/RigTuner.h"
 #include "views/rig/ToneEqOverlay.h"
 #include "widgets/OutputSpectrum.h"
 
@@ -35,6 +36,15 @@ public:
 
   void paint(juce::Graphics& g) override;
   void resized() override;
+  void visibilityChanged() override;
+
+  // The tuner in the analyser's place (RigTuner). Only while the analyser
+  // shows; `onClose` runs when it closes from here (its ✕, or this view
+  // going away), and hideTuner() is the way back for the owner.
+  bool canShowTuner() const;
+  void showTuner(std::function<void()> onClose);
+  void hideTuner();
+  RigTuner* tuner() { return tuner_.get(); }
 
   // The gear in chain order, the Time FX unit last (tests drive these).
   std::vector<juce::Component*> modules() const;
@@ -70,6 +80,8 @@ private:
   OutputSpectrum spectrum_;
   CpuMeter cpu_;
   ToneEqOverlay toneEq_;  // over the spectrum's plot area
+  std::unique_ptr<RigTuner> tuner_;
+  std::function<void()> onTunerClose_;
   std::vector<Cable> cables_;
   juce::uint32 lastTickMs_ = 0;
   float pulseDt_ = 0.0f;     // time gathered since the pulses last moved

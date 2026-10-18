@@ -1055,7 +1055,50 @@ RigView::RigView(Services& services)
   rebuild();
 }
 
+// Hidden with the tuner up (a block's detail card opened over the chain):
+// the tuner closes rather than run unseen.
+void RigView::visibilityChanged() {
+  if (isVisible() || tuner_ == nullptr || !tuner_->onClose) return;
+  juce::Component::SafePointer<RigView> self(this);
+  juce::MessageManager::callAsync([self] {
+    if (self != nullptr && self->tuner_ != nullptr && !self->isVisible()) self->tuner_->onClose();
+  });
+}
+
+bool RigView::canShowTuner() const {
+  return services_.prefs.get(UiPrefs::kSpectrumRate, "normal") != "off";
+}
+
+void RigView::showTuner(std::function<void()> onClose) {
+  onTunerClose_ = std::move(onClose);
+  if (tuner_ == nullptr) {
+    tuner_ = std::make_unique<RigTuner>(services_);
+    tuner_->onClose = [this] {
+      if (onTunerClose_) onTunerClose_();
+      else hideTuner();
+    };
+    addAndMakeVisible(*tuner_);
+  }
+  // The analyser and its native tap rest while the tuner has their place.
+  spectrum_.setRate("off");
+  resized();
+}
+
+void RigView::hideTuner() {
+  if (tuner_ == nullptr) return;
+  // Called from the tuner's own ✕: out of sight now, deleted once that
+  // click has finished.
+  removeChildComponent(tuner_.get());
+  juce::MessageManager::callAsync([gone = std::shared_ptr<RigTuner>(tuner_.release())] {});
+  onTunerClose_ = nullptr;
+  spectrum_.setRate(services_.prefs.get(UiPrefs::kSpectrumRate, "normal"));
+  resized();
+}
+
 RigView::~RigView() {
+  // Going away with the tuner up (the gallery took over): tell the owner,
+  // after this view is gone.
+  if (tuner_ != nullptr && onTunerClose_) juce::MessageManager::callAsync(onTunerClose_);
   services_.clock.removeListener(this);
   services_.prefs.removeListener(this);
   services_.chain.removeListener(this);
@@ -1063,7 +1106,11 @@ RigView::~RigView() {
 
 void RigView::prefChanged(const juce::String& key) {
   if (key == UiPrefs::kSpectrumRate) {
-    spectrum_.setRate(services_.prefs.get(UiPrefs::kSpectrumRate, "normal"));
+    if (tuner_ != nullptr && !canShowTuner() && tuner_->onClose) {
+      tuner_->onClose();  // the analyser's place is gone: so is the tuner
+      return;
+    }
+    if (tuner_ == nullptr) spectrum_.setRate(services_.prefs.get(UiPrefs::kSpectrumRate, "normal"));
     resized();
   }
   if (key == UiPrefs::kSpectrumInputTrace)
@@ -1179,10 +1226,12 @@ void RigView::resized() {
   cpu_.setBounds(area.getX(), area.getY(), CpuMeter::kWidth, CpuMeter::kHeight);
   area.removeFromTop(CpuMeter::kHeight + 4);
   const bool spectrumShown = services_.prefs.get(UiPrefs::kSpectrumRate, "normal") != "off";
-  spectrum_.setVisible(spectrumShown);
-  toneEq_.setVisible(spectrumShown);
+  const bool tunerShown = tuner_ != nullptr && spectrumShown;
+  spectrum_.setVisible(spectrumShown && !tunerShown);
+  toneEq_.setVisible(spectrumShown && !tunerShown);
   if (spectrumShown) {
     spectrum_.setBounds(area.removeFromBottom(kSpectrumHeight));
+    if (tuner_ != nullptr) tuner_->setBounds(spectrum_.getBounds());
     toneEq_.setBounds(spectrum_.plotArea().translated(static_cast<float>(spectrum_.getX()),
                                                       static_cast<float>(spectrum_.getY())).toNearestInt());
     area.removeFromBottom(14);
