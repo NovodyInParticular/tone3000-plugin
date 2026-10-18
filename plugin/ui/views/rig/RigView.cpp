@@ -7,6 +7,7 @@
 #include "core/KnobScale.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
+#include "views/FxDeckPanel.h"
 #include "widgets/HoverTip.h"
 #include "widgets/KnobFace.h"
 
@@ -152,12 +153,13 @@ public:
   Module(Services& services, Kind kind, const ChainItem* item)
       : services_(services), kind_(kind) {
     if (item != nullptr) setItem(*item);
-    else setHelpText("Time FX: modulation, delay and reverb. Right-click the Time FX group on the plate to edit.");
+    else setHelpText("Time FX: modulation, delay and reverb. Click an effect to open its controls.");
     setMouseCursor(item != nullptr ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
     services_.meters.addListener(this);
     services_.stepper.addListener(this);
   }
   ~Module() override {
+    if (fxDeck_ != nullptr) fxDeck_->close();
     if (scopeOn_) services_.backend.setBlockScopeEnabled(item_.blockId, false);
     services_.stepper.removeListener(this);
     services_.meters.removeListener(this);
@@ -196,6 +198,19 @@ public:
         fxBits_ = bits;
         bypassed_ = {};
         repaint();
+      }
+      // Lit rows move at half the UI rate (like the cable pulses).
+      if (bits != 0 && theme::animate() && isShowing()) {
+        fxDt_ += 1.0f / 30.0f;
+        if ((fxFrame_ = !fxFrame_)) return;
+        fxTime_ += fxDt_;
+        fxDt_ = 0.0f;
+        // One rectangle over the lit rows: each repainted rectangle costs a
+        // blit of its own, more than the few extra pixels between rows.
+        juce::Rectangle<float> lit;
+        for (int row = 0; row < 3; ++row)
+          if ((bits >> row & 1) != 0) lit = lit.isEmpty() ? fxRowArea(row) : lit.getUnion(fxRowArea(row));
+        repaint(lit.transformedBy(juce::AffineTransform::scale(scale())).getSmallestIntegerContainer());
       }
       return;
     }
@@ -282,7 +297,11 @@ public:
       if (knobAt(e.position) < 0) knobTip_.hide();
       return;
     }
-    if (kind_ == Kind::fx || !e.mouseWasClicked()) return;
+    if (!e.mouseWasClicked()) return;
+    if (kind_ == Kind::fx) {
+      if (fxRowAt(e.position) >= 0) toggleFxDeck();
+      return;
+    }
     if (const int arrow = arrowAt(e.position); arrow != 0) {
       if (arrowEnabled(arrow)) {
         services_.stepper.setFocusBlock(item_.blockId);
@@ -301,6 +320,18 @@ public:
   }
 
   void mouseMove(const juce::MouseEvent& e) override {
+    if (kind_ == Kind::fx) {
+      const int row = fxRowAt(e.position);
+      if (row == hoverRow_) return;
+      hoverRow_ = row;
+      setMouseCursor(row >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+      static constexpr const char* kHelp[3] = {"Modulation: chorus or flanger.", "Delay: echoes.", "Reverb: room and tail."};
+      setHelpText(row >= 0 ? juce::String(kHelp[row]) + " Click to open the Time FX controls."
+                           : juce::String("Time FX: modulation, delay and reverb. Click an effect to open its controls."));
+      bypassed_ = {};
+      repaint();
+      return;
+    }
     const bool over = kind_ == Kind::pedal && overFootswitch(e.position);
     const int knob = kind_ == Kind::fx ? -1 : knobAt(e.position);
     const int arrow = kind_ == Kind::fx ? 0 : arrowAt(e.position);
@@ -316,7 +347,7 @@ public:
         setHelpText(juce::String(arrow < 0 ? "Previous tone" : "Next tone") + " from the results this one came from ("
                     + juce::String(cursor_->position) + " of " + juce::String(cursor_->total) + ").");
       } else if (knob >= 0) {
-        const auto& k = knobs()[static_cast<size_t>(knob)];
+        const auto k = knobs()[static_cast<size_t>(knob)];
         setHelpText(juce::String(k.name) + ": drag up or down to adjust. Shift+drag: fine · double-click: reset.");
       } else {
         setHelpText(over ? juce::String("Footswitch: turn this pedal on or off.")
@@ -337,12 +368,17 @@ public:
   }
 
   void mouseExit(const juce::MouseEvent&) override {
+    if (hoverRow_ >= 0) {
+      hoverRow_ = -1;
+      bypassed_ = {};
+      repaint();
+    }
     hoverSince_ = 0;
     hoverKnob_ = -1;
     hoverArrow_ = 0;
     tip_.hide();
     if (dragKnob_ < 0) knobTip_.hide();
-    if (marqueeX_ != 0.0f) {
+    if (!juce::exactlyEqual(marqueeX_, 0.0f)) {
       marqueeX_ = 0.0f;
       repaintTitle();
     }
@@ -523,6 +559,132 @@ private:
     titleCut_ = isCut(titleText(), titleSpot());
     bypassed_ = {};
     repaint();
+  }
+
+  // The Time FX unit's three rows (MOD, DLY, REV), each a small picture of
+  // its effect lit only while that effect is on: a wobbling LFO line, echo
+  // dots fading by the feedback, a decay tail. They move on animated skins,
+  // driven by the effect's own settings. Nominal units.
+  static constexpr const char* kFxName[3] = {"MOD", "DLY", "REV"};
+
+  juce::Rectangle<float> fxRowArea(int row) const {
+    const auto box = juce::Rectangle<float>(static_cast<float>(widthOf(Kind::fx)), static_cast<float>(kModuleHeight)).reduced(1.0f);
+    return {box.getX() + 8, box.getY() + 34 + static_cast<float>(row) * 44, box.getWidth() - 16, 38};
+  }
+
+  int fxRowAt(juce::Point<float> p) const {
+    const auto local = p / scale();
+    for (int row = 0; row < 3; ++row)
+      if (fxRowArea(row).contains(local)) return row;
+    return -1;
+  }
+
+  // A parameter in its own units (Hz, ms, ...), or `fallback`.
+  float paramValue(const char* id, float fallback) const {
+    auto* p = services_.backend.parameter(id);
+    return p != nullptr ? p->convertFrom0to1(p->getValue()) : fallback;
+  }
+  float paramNorm(const char* id, float fallback) const {
+    auto* p = services_.backend.parameter(id);
+    return p != nullptr ? p->getValue() : fallback;
+  }
+
+  void fxRow(juce::Graphics& g, int row) {
+    const auto area = fxRowArea(row);
+    const bool on = (fxBits_ >> row & 1) != 0;
+    const bool lit = on && hoverRow_ == row;
+    g.setColour(theme::kBlack.withAlpha(lit ? 0.6f : 0.4f));
+    g.fillRoundedRectangle(area, 4.0f);
+    if (hoverRow_ == row) {
+      g.setColour(theme::kBorder);
+      g.drawRoundedRectangle(area.reduced(0.5f), 4.0f, 1.0f);
+    }
+    led(g, {area.getX() + 8, area.getY() + 8}, on);
+    g.setColour(on ? theme::kWhite : theme::kGray);
+    g.setFont(label(10, on));
+    g.drawText(kFxName[row], juce::Rectangle<float>(area.getX() + 15, area.getY() + 2, 40, 12),
+               juce::Justification::centredLeft, false);
+    const auto pic = area.withTrimmedTop(15).reduced(6, 3);
+    const auto colour = on ? theme::kBrandYellow : theme::kGray.withAlpha(0.45f);
+    const float t = on && theme::animate() ? fxTime_ : 0.0f;
+    juce::Path path;
+    switch (row) {
+      case 0: {  // MOD: an LFO line, its speed the Rate (slowed past 3 Hz to stay readable), its swing the Depth
+        const float rate = juce::jlimit(0.2f, 3.0f, paramValue("fxModRate", 0.8f));
+        const float depth = 0.25f + 0.75f * paramNorm("fxModDepth", 0.5f);
+        for (int i = 0; i <= 40; ++i) {
+          const float u = static_cast<float>(i) / 40.0f;
+          const float y = pic.getCentreY()
+                          - std::sin((u * 2.0f - t * rate) * juce::MathConstants<float>::twoPi) * depth * pic.getHeight() * 0.45f;
+          const float x = pic.getX() + u * pic.getWidth();
+          if (i == 0) path.startNewSubPath(x, y);
+          else path.lineTo(x, y);
+        }
+        g.setColour(colour);
+        g.strokePath(path, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        break;
+      }
+      case 1: {  // DLY: echoes fading by the Feedback; a ping runs along them every Time
+        constexpr int kDots = 6;
+        const float fb = juce::jlimit(0.1f, 0.95f, paramNorm("fxDelayFeedback", 0.37f));
+        const float periodS = juce::jlimit(0.12f, 1.2f, paramValue("fxDelayTime", 380.0f) / 1000.0f);
+        const int ping = on && theme::animate() ? static_cast<int>(t / periodS) % (kDots + 2) : -1;
+        float alpha = 1.0f;
+        for (int i = 0; i < kDots; ++i) {
+          const float x = pic.getX() + 4 + static_cast<float>(i) * (pic.getWidth() - 8) / static_cast<float>(kDots - 1);
+          const float r = 1.5f + 2.5f * alpha;
+          const bool flash = i == ping;
+          g.setColour(colour.withMultipliedAlpha(juce::jlimit(0.12f, 1.0f, alpha * (flash ? 1.0f : 0.6f))));
+          g.fillEllipse(juce::Rectangle<float>(2 * r, 2 * r).withCentre({x, pic.getCentreY()}));
+          if (flash && theme::kStyle.glow > 0.0f) {
+            g.setColour(colour.withAlpha(0.3f * theme::kStyle.glow * alpha));
+            g.fillEllipse(juce::Rectangle<float>(4 * r, 4 * r).withCentre({x, pic.getCentreY()}));
+          }
+          alpha *= fb;
+        }
+        break;
+      }
+      case 2: {  // REV: a decay tail as long as the Decay, shimmering inside
+        const float decay = 0.15f + 0.85f * paramNorm("fxReverbDecay", 0.4f);
+        path.startNewSubPath(pic.getX(), pic.getBottom());
+        for (int i = 0; i <= 40; ++i) {
+          const float u = static_cast<float>(i) / 40.0f;
+          path.lineTo(pic.getX() + u * pic.getWidth(), pic.getBottom() - pic.getHeight() * std::exp(-u / (0.35f * decay)));
+        }
+        path.lineTo(pic.getRight(), pic.getBottom());
+        path.closeSubPath();
+        g.setColour(colour.withMultipliedAlpha(0.25f));
+        g.fillPath(path);
+        g.setColour(colour);
+        g.strokePath(path, juce::PathStrokeType(1.0f));
+        if (t > 0.0f) {
+          juce::Random rng(static_cast<juce::int64>(t * 15.0f));
+          g.setColour(colour.withMultipliedAlpha(0.6f));
+          for (int i = 0; i < 9; ++i) {
+            const float u = 0.05f + 0.9f * rng.nextFloat();
+            const float top = pic.getBottom() - pic.getHeight() * std::exp(-u / (0.35f * decay)) * rng.nextFloat();
+            g.drawVerticalLine(juce::roundToInt(pic.getX() + u * pic.getWidth()), top, pic.getBottom());
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  void toggleFxDeck() {
+    if (fxDeck_ == nullptr) fxDeck_ = std::make_unique<FxDeckPanel>(services_);
+    if (fxDeck_->isOpen()) {
+      fxDeck_->close();
+      return;
+    }
+    // Below the unit, shifted left when it would leave the window.
+    int inset = 0;
+    if (auto* top = getTopLevelComponent()) {
+      const int left = top->getLocalPoint(this, juce::Point<int>{}).x;
+      const int overflow = left + fxDeck_->getWidth() - (top->getWidth() - 16);
+      if (overflow > 0) inset = -std::min(overflow, left - 16);
+    }
+    fxDeck_->open(*this, Popover::Align::left, FxDeckPanel::kGap, inset, Popover::Placement::below);
   }
 
   TitleSpot titleSpot() const {
@@ -712,25 +874,11 @@ private:
         break;
       }
       case Kind::fx: {
-        const auto on = [this](const char* id) {
-          auto* p = services_.backend.parameter(id);
-          return p != nullptr && p->getValue() >= 0.5f;
-        };
-        const bool any = on("fxModEnabled") || on("fxDelayEnabled") || on("fxReverbEnabled");
-        body(g, box, any);
+        body(g, box, fxBits_ > 0);
         g.setColour(theme::kWhite);
         g.setFont(label(12, true));
         g.drawText("TIME FX", box.withHeight(30), juce::Justification::centred, false);
-        float y = box.getY() + 46;
-        for (const auto& [id, name] : {std::pair{"fxModEnabled", "MOD"}, std::pair{"fxDelayEnabled", "DLY"},
-                                       std::pair{"fxReverbEnabled", "REV"}}) {
-          led(g, {box.getX() + 24, y}, on(id));
-          g.setColour(on(id) ? theme::kWhite : theme::kGray);
-          g.setFont(label(12));
-          g.drawText(name, juce::Rectangle<float>(box.getX() + 36, y - 8, 60, 16), juce::Justification::centredLeft,
-                     false);
-          y += 26;
-        }
+        for (int row = 0; row < 3; ++row) fxRow(g, row);
         break;
       }
     }
@@ -762,6 +910,12 @@ private:
   HoverTip knobTip_;
   std::optional<ToneStepper::Cursor> cursor_;  // set while the block has results to step
   int hoverArrow_ = 0;
+  // The Time FX unit: the row under the pointer, its animation clock and
+  // the rack its rows open.
+  int hoverRow_ = -1;
+  float fxTime_ = 0.0f, fxDt_ = 0.0f;
+  bool fxFrame_ = false;
+  std::unique_ptr<FxDeckPanel> fxDeck_;
 };
 
 RigView::RigView(Services& services)

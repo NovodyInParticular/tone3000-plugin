@@ -45,6 +45,7 @@
 #include "views/browser/ToneCard.h"
 #include "views/gallery/GalleryGeometry.h"
 #include "views/gallery/GalleryTile.h"
+#include "views/FxDeckPanel.h"
 #include "views/rig/RigView.h"
 #include "views/rig/ToneEqOverlay.h"
 #include "widgets/CpuMeter.h"
@@ -2867,6 +2868,63 @@ struct RigScopeTests : juce::UnitTest {
   }
 };
 
+// The Time FX unit's rows open the Time FX rack, as the faceplate's
+// group does; a second click closes it.
+struct RigTimeFxTests : juce::UnitTest {
+  RigTimeFxTests() : juce::UnitTest("Rig view Time FX", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("rig-neural-fx");
+    if (scenario == nullptr) {
+      expect(false, "rig-neural-fx scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("rig time fx", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto* peer = host.getPeer();
+    auto& root = host.pluginRoot();
+    expect(peer != nullptr);
+    if (peer == nullptr) return;
+    auto* rig = dynamic_cast<RigView*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<RigView*>(&c) != nullptr && c.isShowing();
+    }));
+    expect(rig != nullptr && !rig->modules().empty());
+    if (rig == nullptr || rig->modules().empty()) return;
+    auto* fx = rig->modules().back();
+    const float k = static_cast<float>(fx->getHeight()) / 170.0f;
+    const auto click = [&](juce::Point<float> nominal) {
+      const auto pos = peer->getComponent().getLocalPoint(fx, nominal * k);
+      const auto now = juce::Time::currentTimeMillis();
+      using Type = juce::MouseInputSource::InputSourceType;
+      peer->handleMouseEvent(Type::mouse, pos, juce::ModifierKeys::leftButtonModifier, 0.0f, 0.0f, now);
+      peer->handleMouseEvent(Type::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f, now + 1);
+      pump(100);
+    };
+    const auto deck = [&]() -> juce::Component* {
+      return drive::find(root.overlayLayer(), [](juce::Component& c) {
+        return dynamic_cast<FxDeckPanel*>(&c) != nullptr && c.isShowing();
+      });
+    };
+
+    beginTest("a click on the DLY row opens the Time FX rack");
+    expect(deck() == nullptr);
+    click({62.0f, 1.0f + 34.0f + 44.0f + 19.0f});  // the middle of row 2
+    expect(deck() != nullptr, "the rack didn't open");
+
+    beginTest("a second click closes it");
+    click({62.0f, 1.0f + 34.0f + 44.0f + 19.0f});
+    expect(LiveScenario::until([&] { return deck() == nullptr; }, 1000), "the rack stayed open");
+    window.setVisible(false);
+  }
+};
+
 // Committing a typed CC number swaps the listening row for a mapping row of
 // the same height. The form host only re-flows on a height change, so the
 // card has to place its new rows itself or they sit at 0×0 and the card
@@ -3346,6 +3404,7 @@ RigBypassTests rigBypassTests;
 RigStepTests rigStepTests;
 RigToneEqTests rigToneEqTests;
 RigScopeTests rigScopeTests;
+RigTimeFxTests rigTimeFxTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;
