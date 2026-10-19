@@ -194,6 +194,10 @@ public:
   // 0..1: the block's output level on the meters' -60..0 dB scale.
   float level() const { return kind_ == Kind::fx ? 0.0f : outLevel(); }
   std::function<void(const std::string&)> onOpen;
+  // Drag to reorder, in the rig view's coordinates (see RigView::reorderDrag).
+  std::function<void(Module&, juce::Point<int>)> onReorderDrag;
+  std::function<void(Module&, juce::Point<int>, bool)> onReorderEnd;
+  int row() const { return static_cast<int>(getProperties()["row"]); }
 
   void advance() {
     hoverTick();
@@ -273,6 +277,10 @@ public:
   }
 
   void mouseDown(const juce::MouseEvent& e) override {
+    // A press on the body (no control under it) may become a reorder drag.
+    pressedBody_ = kind_ != Kind::fx && !overBlend(e.position) && knobAt(e.position) < 0 && arrowAt(e.position) == 0
+                   && !(kind_ == Kind::pedal && overFootswitch(e.position));
+    reordering_ = false;
     if (overBlend(e.position)) {
       blendDrag_ = true;
       setBlend((e.position.x / scale() - blendTrack().getX()) / blendTrack().getWidth());
@@ -287,6 +295,15 @@ public:
   }
 
   void mouseDrag(const juce::MouseEvent& e) override {
+    if (pressedBody_ && (reordering_ || e.getDistanceFromDragStart() > kReorderSlop)) {
+      if (!reordering_) {
+        reordering_ = true;
+        tip_.hide();
+        setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+      }
+      if (onReorderDrag) onReorderDrag(*this, e.getEventRelativeTo(getParentComponent()).getPosition());
+      return;
+    }
     if (blendDrag_) {
       setBlend((e.position.x / scale() - blendTrack().getX()) / blendTrack().getWidth());
       return;
@@ -314,6 +331,14 @@ public:
   }
 
   void mouseUp(const juce::MouseEvent& e) override {
+    if (reordering_) {
+      // A drag never opens the block.
+      reordering_ = pressedBody_ = false;
+      setMouseCursor(juce::MouseCursor::PointingHandCursor);
+      if (onReorderEnd) onReorderEnd(*this, e.getEventRelativeTo(getParentComponent()).getPosition(), true);
+      return;
+    }
+    pressedBody_ = false;
     if (blendDrag_) {
       // A blend press never opens the block.
       blendDrag_ = false;
@@ -1035,6 +1060,9 @@ private:
   // The Time FX unit: the row under the pointer, its animation clock and
   // the rack its rows open.
   int hoverRow_ = -1;
+  // Reorder: the press began on the module's body; it became a drag.
+  static constexpr int kReorderSlop = 6;
+  bool pressedBody_ = false, reordering_ = false;
   bool hoverBlend_ = false, blendDrag_ = false;  // a dual-IR cab's blend slider
   float fxTime_ = 0.0f, fxDt_ = 0.0f;
   bool fxFrame_ = false;
@@ -1179,7 +1207,14 @@ void RigView::layoutCables() {
   cables_ = std::move(next);
 }
 
-void RigView::chainChanged(const ChainState&) { rebuild(); }
+void RigView::chainChanged(const ChainState&) {
+  if (dragged_ != nullptr) {
+    dragged_->setAlpha(1.0f);
+    dragged_ = nullptr;
+    dropIndex_ = -1;
+  }
+  rebuild();
+}
 
 void RigView::rebuild() {
   const auto& state = services_.chain.state();
@@ -1199,6 +1234,8 @@ void RigView::rebuild() {
       m->onOpen = [this](const std::string& id) {
         if (onOpenBlock) onOpenBlock(id);
       };
+      m->onReorderDrag = [this](Module& mod, juce::Point<int> pos) { reorderDrag(mod, pos); };
+      m->onReorderEnd = [this](Module& mod, juce::Point<int> pos, bool commit) { reorderEnd(mod, pos, commit); };
       addAndMakeVisible(*m);
     }
     m->setItem(item);
@@ -1265,6 +1302,97 @@ void RigView::resized() {
   layoutCables();
 }
 
+std::vector<RigView::Module*> RigView::rowModules(int row) const {
+  std::vector<Module*> out;
+  for (const auto& m : modules_)
+    if (m->row() == row) out.push_back(m.get());
+  return out;
+}
+
+int RigView::dropIndex(const Module& dragged, int x) const {
+  int index = 0;
+  for (auto* m : rowModules(dragged.row()))
+    if (m != &dragged && m->getBounds().getCentreX() < x) ++index;
+  return index;
+}
+
+// The bar sits in the gap the module would land in: before the first other
+// module, between two, or after the last.
+int RigView::dropBarX(const Module& dragged, int index) const {
+  std::vector<Module*> others;
+  for (auto* m : rowModules(dragged.row()))
+    if (m != &dragged) others.push_back(m);
+  if (others.empty()) return dragged.getX();
+  const int gap = juce::roundToInt(kGap * static_cast<float>(others.front()->getHeight()) / kModuleHeight);
+  if (index <= 0) return others.front()->getX() - gap / 2;
+  if (index >= static_cast<int>(others.size())) return others.back()->getRight() + gap / 2;
+  return (others[static_cast<size_t>(index - 1)]->getRight() + others[static_cast<size_t>(index)]->getX()) / 2;
+}
+
+void RigView::reorderDrag(Module& m, juce::Point<int> pos) {
+  if (dragged_ != &m) {
+    dragged_ = &m;
+    dragGrabX_ = pos.x - m.getX();
+    m.toFront(false);
+    m.setAlpha(0.85f);
+  }
+  // The module follows the pointer along its row.
+  m.setTopLeftPosition(pos.x - dragGrabX_, m.getY());
+  const int next = dropIndex(m, m.getBounds().getCentreX());
+  if (next != dropIndex_) {
+    dropIndex_ = next;
+    repaint();
+  } else {
+    repaint(m.getBounds().expanded(juce::roundToInt(kGap * 2.0f), 4));
+  }
+}
+
+void RigView::reorderEnd(Module& m, juce::Point<int> pos, bool commit) {
+  if (dragged_ != &m) return;
+  const int index = dropIndex(m, m.getBounds().getCentreX());
+  const int row = m.row();
+  const std::string id = m.blockId();
+  // Dropped away from the row: nothing moves.
+  const auto rowBand = juce::Rectangle<int>(0, m.getY() - m.getHeight() / 2, getWidth(), m.getHeight() * 2);
+  commit = commit && rowBand.contains(pos);
+  dragged_ = nullptr;
+  dropIndex_ = -1;
+  m.setAlpha(1.0f);
+  // The lane's new order: its tone blocks in the dragged order, every empty
+  // insert slot where it was.
+  std::vector<std::string> order;
+  if (commit) {
+    const auto& state = services_.chain.state();
+    const auto& lane = row == 0 ? state.chain : *state.chainRight;
+    std::vector<std::string> tones;
+    for (const auto& item : lane)
+      if (!item.isInsert && item.blockId != id) tones.push_back(item.blockId);
+    tones.insert(tones.begin() + juce::jlimit(0, static_cast<int>(tones.size()), index), id);
+    size_t next = 0;
+    for (const auto& item : lane) order.push_back(item.isInsert ? item.blockId : tones[next++]);
+    std::vector<std::string> before;
+    for (const auto& item : lane) before.push_back(item.blockId);
+    if (order == before) order.clear();
+  }
+  resized();
+  repaint();
+  // The store resyncs on success and rebuilds this view in the new order.
+  if (!order.empty()) services_.chain.reorderBlocks(order);
+}
+
+void RigView::paintOverChildren(juce::Graphics& g) {
+  if (dragged_ == nullptr || dropIndex_ < 0) return;
+  // The drop bar: an accent line the height of the module, with a halo.
+  const auto x = static_cast<float>(dropBarX(*dragged_, dropIndex_));
+  const auto top = static_cast<float>(dragged_->getY()), bottom = static_cast<float>(dragged_->getBottom());
+  if (theme::kStyle.glow > 0.0f) {
+    g.setColour(theme::kBrandYellow.withAlpha(0.3f * theme::kStyle.glow));
+    g.fillRoundedRectangle(juce::Rectangle<float>(x - 4.0f, top, 8.0f, bottom - top), 4.0f);
+  }
+  g.setColour(theme::kBrandYellow);
+  g.fillRoundedRectangle(juce::Rectangle<float>(x - 1.5f, top, 3.0f, bottom - top), 1.5f);
+}
+
 std::vector<juce::Component*> RigView::modules() const {
   std::vector<juce::Component*> out;
   for (const auto& m : modules_) out.push_back(m.get());
@@ -1277,6 +1405,7 @@ void RigView::paint(juce::Graphics& g) {
   // touches a bypassed module is dim, the signal skipping past it.
   const bool pulses = theme::animate();
   for (auto& c : cables_) {
+    if (dragged_ != nullptr && (c.from == dragged_ || c.to == dragged_)) continue;  // re-cabled on drop
     const auto a = c.from->getBounds(), b = c.to->getBounds();
     const float y = static_cast<float>(a.getCentreY());
     const juce::Line<float> line(static_cast<float>(a.getRight()), y, static_cast<float>(b.getX()), y);

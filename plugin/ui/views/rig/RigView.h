@@ -35,6 +35,7 @@ public:
   std::function<void(const std::string& blockId)> onOpenBlock;
 
   void paint(juce::Graphics& g) override;
+  void paintOverChildren(juce::Graphics& g) override;
   void resized() override;
   void visibilityChanged() override;
 
@@ -49,6 +50,8 @@ public:
   // The gear in chain order, the Time FX unit last (tests drive these).
   std::vector<juce::Component*> modules() const;
   ToneEqOverlay& toneEq() { return toneEq_; }
+  // The module being dragged to a new place, if any (tests).
+  bool reordering() const { return dragged_ != nullptr; }
 
   class Module;
 
@@ -69,6 +72,17 @@ private:
     bool drawn = false;  // a pulse was painted last frame
   };
   void layoutCables();
+
+  // Drag to reorder: a pedal, amp or cab dragged along its row, a drop bar
+  // where it would land, one reorder on release (empty insert slots keep
+  // their places in the lane).
+  void reorderDrag(Module& m, juce::Point<int> pos);
+  void reorderEnd(Module& m, juce::Point<int> pos, bool commit);
+  std::vector<Module*> rowModules(int row) const;
+  int dropIndex(const Module& dragged, int x) const;  // among the row's other modules
+  int dropBarX(const Module& dragged, int index) const;
+  Module* dragged_ = nullptr;
+  int dragGrabX_ = 0, dropIndex_ = -1;
   juce::Rectangle<int> cableArea(const Cable& c) const;
   juce::Rectangle<int> pulseArea(const Cable& c) const;  // the dot, with its glow
   bool cableLive(const Cable& c) const;

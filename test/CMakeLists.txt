@@ -26,6 +26,7 @@ target_sources(DspTests PRIVATE
     src/rig_share_tests.cpp
     src/output_spectrum_tests.cpp
     src/block_scope_tests.cpp
+    src/rig_reorder_tests.cpp
     src/branch_tests.cpp
     src/clipboard_tests.cpp
     src/dsp_tests.cpp

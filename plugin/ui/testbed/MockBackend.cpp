@@ -211,6 +211,23 @@ void MockBackend::setNamSlimSizeDefault(double slimSize) {
 
 // Written through like the processor does it, so the store's synchronous
 // refresh after the call replays into the open block card.
+bool MockBackend::reorderChainBlocks(const std::vector<std::string>& newOrder) {
+  lastReorder = newOrder;
+  for (const auto* lane : {"chain", "chainRight"}) {
+    auto* blocks = chain_[lane].getArray();
+    if (blocks == nullptr || blocks->size() != static_cast<int>(newOrder.size())) continue;
+    juce::Array<juce::var> reordered;
+    for (const auto& id : newOrder)
+      for (const auto& block : *blocks)
+        if (block["blockId"].toString().toStdString() == id) reordered.add(block);
+    if (reordered.size() != blocks->size()) continue;  // not this lane's permutation
+    *blocks = reordered;
+    bumpChain();
+    return true;
+  }
+  return false;
+}
+
 bool MockBackend::setBlockParam(const std::string& blockId, const juce::String& param, double value) {
   for (const auto* lane : {"chain", "chainRight"}) {
     if (auto* blocks = chain_[lane].getArray()) {

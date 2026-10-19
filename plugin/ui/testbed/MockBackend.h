@@ -64,7 +64,10 @@ public:
   bool switchModel(const std::string&, int, const juce::var&) override { return true; }
   bool retryModelLoad(const std::string&) override { return true; }
   bool removeChainBlock(const std::string&) override { return true; }
-  bool reorderChainBlocks(const std::vector<std::string>&) override { return true; }
+  // Applies the order to whichever lane it permutes, like the processor,
+  // and records it (tests check what a drop asked for).
+  bool reorderChainBlocks(const std::vector<std::string>& newOrder) override;
+  std::vector<std::string> lastReorder;
   // Moves the block between lanes like the processor, and records the call
   // so self-tests can check what a cross-lane drop asked for.
   bool moveBlockToChain(const std::string& blockId, const juce::String& side, int index) override;

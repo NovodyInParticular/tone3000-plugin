@@ -3077,6 +3077,89 @@ struct RigTunerTests : juce::UnitTest {
   }
 };
 
+// Dragging a rig module along its row reorders the chain (one reorder,
+// empty insert slots where they were) and never opens the block; a drop
+// away from the row changes nothing.
+struct RigReorderTests : juce::UnitTest {
+  RigReorderTests() : juce::UnitTest("Rig view reorder", "ui") {}
+
+  static void pump(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
+
+  void runTest() override {
+    const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
+    const auto* scenario = fixtures.find("rig-neural");
+    if (scenario == nullptr) {
+      expect(false, "rig-neural scenario missing");
+      return;
+    }
+    MockBackend backend(scenario->data);
+    juce::DocumentWindow window("rig reorder", juce::Colours::black, 0);
+    ScaledHost host(backend, *scenario, fixtures.root);
+    window.setContentNonOwned(&host, true);
+    window.setVisible(true);
+    pump(400);
+    auto* peer = host.getPeer();
+    auto& root = host.pluginRoot();
+    auto* rig = dynamic_cast<RigView*>(drive::find(root, [](juce::Component& c) {
+      return dynamic_cast<RigView*>(&c) != nullptr && c.isShowing();
+    }));
+    expect(peer != nullptr && rig != nullptr && rig->modules().size() == 4);
+    if (peer == nullptr || rig == nullptr || rig->modules().size() != 4) return;
+    std::string opened;
+    rig->onOpenBlock = [&](const std::string& id) { opened = id; };
+    auto time = juce::Time::currentTimeMillis();
+    const auto at = [&](juce::Point<int> rigPos, bool down) {
+      const auto pos = peer->getComponent().getLocalPoint(rig, rigPos.toFloat());
+      peer->handleMouseEvent(juce::MouseInputSource::InputSourceType::mouse, pos,
+                             down ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(), 0.0f, 0.0f, ++time);
+      pump(10);
+    };
+    const auto ids = [&] {
+      std::vector<std::string> out;
+      for (const auto& item : root.services().chain.state().chain) out.push_back(item.blockId);
+      return out;
+    };
+    const auto before = ids();  // blk-1 (pedal), blk-2 (amp), blk-3 (cab), then the empty slots
+
+    beginTest("a drag that ends away from the row changes nothing");
+    {
+      auto* cab = rig->modules()[2];
+      const auto grab = cab->getBounds().getCentre().withY(cab->getY() + cab->getHeight() / 5);  // the grille
+      at(grab, true);
+      for (int step = 1; step <= 8; ++step) at(grab.translated(-20 * step, 40 * step), true);
+      expect(rig->reordering(), "the drag didn't start");
+      at(grab.translated(-160, 320), false);
+      pump(100);
+      expect(!rig->reordering());
+      expect(backend.lastReorder.empty(), "a reorder was sent");
+      expect(ids() == before);
+      expect(opened.empty(), "the drag opened the block");
+    }
+
+    beginTest("dragging the cab before the pedal reorders the lane, empty slots kept in place");
+    {
+      auto* cab = rig->modules()[2];
+      auto* pedal = rig->modules()[0];
+      const auto grab = cab->getBounds().getCentre().withY(cab->getY() + cab->getHeight() / 5);
+      const int targetX = pedal->getX() - 10;
+      at(grab, true);
+      const int steps = 16;
+      for (int step = 1; step <= steps; ++step)
+        at({grab.x + (targetX - grab.x) * step / steps, grab.y}, true);
+      at({targetX, grab.y}, false);
+      pump(150);
+      std::vector<std::string> expected = {"blk-3", "blk-1", "blk-2"};
+      for (size_t i = 3; i < before.size(); ++i) expected.push_back(before[i]);
+      expect(backend.lastReorder == expected, "the reorder sent the wrong order");
+      expect(ids() == expected, "the chain didn't take the new order");
+      expectEquals(juce::String(dynamic_cast<juce::Component*>(rig->modules()[0])->getHelpText().upToFirstOccurrenceOf(" -", false, false)),
+                   juce::String("UK Greenback"), "the cab isn't first in the rig");
+      expect(opened.empty(), "the drag opened the block");
+    }
+    window.setVisible(false);
+  }
+};
+
 // Committing a typed CC number swaps the listening row for a mapping row of
 // the same height. The form host only re-flows on a height change, so the
 // card has to place its new rows itself or they sit at 0×0 and the card
@@ -3559,6 +3642,7 @@ RigScopeTests rigScopeTests;
 RigTimeFxTests rigTimeFxTests;
 RigDualIrTests rigDualIrTests;
 RigTunerTests rigTunerTests;
+RigReorderTests rigReorderTests;
 KnobReadoutTests knobReadoutTests;
 FaceplateEffectsTests faceplateEffectsTests;
 FaceplateDualMonoTests faceplateDualMonoTests;
