@@ -749,14 +749,8 @@ private:
       fxDeck_->close();
       return;
     }
-    // Below the unit, shifted left when it would leave the window.
-    int inset = 0;
-    if (auto* top = getTopLevelComponent()) {
-      const int left = top->getLocalPoint(this, juce::Point<int>{}).x;
-      const int overflow = left + fxDeck_->getWidth() - (top->getWidth() - 16);
-      if (overflow > 0) inset = -std::min(overflow, left - 16);
-    }
-    fxDeck_->open(*this, Popover::Align::left, FxDeckPanel::kGap, inset, Popover::Placement::below);
+    // Below the unit; Popover keeps it inside the window.
+    fxDeck_->open(*this, Popover::Align::left, FxDeckPanel::kGap, 0, Popover::Placement::below);
   }
 
   // A cab blending two IRs: the grille split into an A and a B half, each

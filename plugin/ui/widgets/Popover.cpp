@@ -113,8 +113,16 @@ void Popover::reposition() {
   const float k = adoptScaleOf(*anchor_);
   const auto a = overlay->getLocalArea(anchor_.getComponent(), anchor_->getLocalBounds().toFloat()) / k;
   const float x = align_ == Align::left ? a.getX() + inset_ : a.getRight() - inset_ - getWidth();
-  const float y = placement_ == Placement::below ? a.getBottom() + gap_ : a.getY() - gap_ - getHeight();
-  setTopLeftPosition(juce::roundToInt(x), juce::roundToInt(y));
+  const float below = a.getBottom() + gap_, above = a.getY() - gap_ - getHeight();
+  // The asked-for side, or the other one when only that fits; then kept
+  // inside the overlay, so a panel opened near an edge never hangs off it.
+  const float w = overlay->getWidth() / k, h = overlay->getHeight() / k;
+  float y = placement_ == Placement::below ? below : above;
+  if (placement_ == Placement::below && below + getHeight() > h && above >= 0.0f) y = above;
+  if (placement_ == Placement::above && above < 0.0f && below + getHeight() <= h) y = below;
+  const int maxX = std::max(0, juce::roundToInt(w) - getWidth());
+  const int maxY = std::max(0, juce::roundToInt(h) - getHeight());
+  setTopLeftPosition(juce::jlimit(0, maxX, juce::roundToInt(x)), juce::jlimit(0, maxY, juce::roundToInt(y)));
 }
 
 float Popover::adoptScaleOf(const juce::Component& source) {

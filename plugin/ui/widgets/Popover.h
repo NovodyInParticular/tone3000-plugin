@@ -41,7 +41,8 @@ public:
 
   // Show below (or above) `anchor`, `gap` px from its edge, with the panel's
   // left (or right) edge offset `inset` px from the anchor's matching edge.
-  // The panel must already have its size set.
+  // The panel must already have its size set. It flips to the other side
+  // when only that one fits, and is kept inside the overlay.
   void open(juce::Component& anchor, Align align, int gap, int inset = 0,
             Placement placement = Placement::below);
   // Show with the panel's top-left at a point given in `context`'s local
