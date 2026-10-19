@@ -2710,6 +2710,7 @@ struct RigStepTests : juce::UnitTest {
       expect(false, "rig-neural-browse scenario missing");
       return;
     }
+    beginTest("the first result's prev arrow is dead and opens nothing");
     MockBackend backend(scenario->data);
     juce::DocumentWindow window("rig step", juce::Colours::black, 0);
     ScaledHost host(backend, *scenario, fixtures.root);
@@ -2743,7 +2744,6 @@ struct RigStepTests : juce::UnitTest {
       pump(60);
     };
 
-    beginTest("the first result's prev arrow is dead and opens nothing");
     auto cursor = stepper.cursor("blk-2");
     expect(cursor.has_value() && cursor->position == 1 && !cursor->canPrev && cursor->canNext);
     click({23.0f, 28.0f});
@@ -2757,6 +2757,30 @@ struct RigStepTests : juce::UnitTest {
     expectEquals(backend.lastSwapIndex, 1);
     expect(opened.empty(), "the arrow opened the block");
     expectEquals(juce::String(stepper.focusBlock()), juce::String("blk-2"));
+
+    beginTest("a step from the cab's arrow swaps the name's tooltip for the new name");
+    {
+      auto* cab = modules[2];
+      const float kc = static_cast<float>(cab->getHeight()) / 170.0f;
+      // The cab's next arrow: the right end of its name row (bottom 26 units).
+      const auto pos = peer->getComponent().getLocalPoint(
+          cab, juce::Point<float>(static_cast<float>(cab->getWidth()) - 17.0f * kc, 148.0f * kc));
+      peer->handleMouseEvent(juce::MouseInputSource::InputSourceType::mouse, pos, juce::ModifierKeys(), 0.0f, 0.0f,
+                             juce::Time::currentTimeMillis());
+      const auto tipText = [&] {
+        auto* tip = drive::find(root, [](juce::Component& c) { return c.getComponentID() == HoverTip::kComponentId; });
+        return tip != nullptr ? tip->getTitle() : juce::String();
+      };
+      const juce::String before = "UK Greenback - Marshall 1960TV 4x12 M201";
+      const juce::String after = "Mesa Rectifier 4x12 V30 - SM57 Cap Edge Off Axis";
+      expect(LiveScenario::until([&] { return tipText() == before; }), "no tooltip for the cab's name: " + tipText());
+      // The swap lands as the chain poll brings the next tone in.
+      auto chain = scenario->data["chain"].clone();
+      chain["chain"][2]["tone"].getDynamicObject()->setProperty("title", after);
+      backend.setChain(chain);
+      expect(LiveScenario::until([&] { return tipText() != before; }), "the old name's tooltip stayed up");
+      expect(LiveScenario::until([&] { return tipText() == after; }), "the new name never showed: " + tipText());
+    }
     window.setVisible(false);
   }
 };
@@ -2905,6 +2929,7 @@ struct RigTimeFxTests : juce::UnitTest {
       expect(false, "rig-neural-fx scenario missing");
       return;
     }
+    beginTest("a click on the DLY row opens the Time FX rack");
     MockBackend backend(scenario->data);
     juce::DocumentWindow window("rig time fx", juce::Colours::black, 0);
     ScaledHost host(backend, *scenario, fixtures.root);
@@ -2936,10 +2961,14 @@ struct RigTimeFxTests : juce::UnitTest {
       });
     };
 
-    beginTest("a click on the DLY row opens the Time FX rack");
     expect(deck() == nullptr);
     click({62.0f, 1.0f + 34.0f + 44.0f + 19.0f});  // the middle of row 2
     expect(deck() != nullptr, "the rack didn't open");
+    if (auto* d = deck()) {
+      const auto& overlay = root.overlayLayer();
+      const auto box = overlay.getLocalArea(d, d->getLocalBounds());
+      expect(overlay.getLocalBounds().contains(box), "the rack opened outside the window: " + box.toString());
+    }
 
     beginTest("a second click closes it");
     click({62.0f, 1.0f + 34.0f + 44.0f + 19.0f});
@@ -3686,10 +3715,17 @@ ReadoutTests readoutTests;
 
 }  // namespace
 
-int runSelfTests() {
+int runSelfTests(const juce::String& only) {
   juce::UnitTestRunner runner;
   runner.setAssertOnFailure(false);
-  runner.runTestsInCategory("ui");
+  if (only.isEmpty()) {
+    runner.runTestsInCategory("ui");
+  } else {
+    juce::Array<juce::UnitTest*> picked;
+    for (auto* t : juce::UnitTest::getTestsInCategory("ui"))
+      if (t->getName().contains(only)) picked.add(t);
+    runner.runTests(picked);
+  }
   int failures = 0;
   for (int i = 0; i < runner.getNumResults(); ++i) {
     const auto* r = runner.getResult(i);

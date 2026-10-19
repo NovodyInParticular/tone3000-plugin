@@ -24,6 +24,7 @@ public:
   void setText(const juce::String& text) {
     if (text_ == text) return;
     text_ = text;
+    setTitle(text);  // not announced (see above); lets tests read what shows
     repaint();
   }
 

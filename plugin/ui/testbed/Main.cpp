@@ -171,7 +171,7 @@ public:
       return;
     }
     if (args.size() >= 1 && args[0] == "--selftest") {
-      setApplicationReturnValue(runSelfTests());
+      setApplicationReturnValue(runSelfTests(args.size() >= 2 ? args[1].unquoted() : juce::String()));
       quit();
       return;
     }

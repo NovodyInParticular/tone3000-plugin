@@ -171,6 +171,10 @@ public:
     const bool newTone = item_.blockId == item.blockId && (item_.tone.id != item.tone.id || item_.activeModelId != item.activeModelId);
     const auto held = dragKnob_ >= 0 ? knobValue(knobs()[static_cast<size_t>(dragKnob_)]) : 0.0;
     const float heldBlend = blend();
+    const auto shownName = [this] {
+      return kind_ == Kind::fx ? juce::String() : titleText() + (dual() ? "\n" + item_.dualIr->bTitle : juce::String());
+    };
+    const auto nameBefore = shownName();
     item_ = item;
     if (dragKnob_ >= 0) knobValue(knobs()[static_cast<size_t>(dragKnob_)]) = held;  // the drag owns it
     if (blendDrag_ && item_.dualIr) item_.dualIr->blend = heldBlend;
@@ -183,7 +187,15 @@ public:
       half.area = half.area.withWidth(half.area.getWidth() / 2).reduced(2, 0);
       titleCut_ = isCut(titleText(), half) || isCut(item_.dualIr->bTitle, half);
     }
-    setHelpText(item.tone.title + ": click to open the block.");
+    if (hoverArrow_ != 0 && cursor_) showArrowHelp();  // still on the ‹ ›
+    else setHelpText(item.tone.title + ": click to open the block.");
+    if (shownName() != nameBefore) {
+      // A step from under the pointer (the ‹ › beside the name): drop the
+      // old name's tooltip and marquee; the hover starts over for the new one.
+      tip_.hide();
+      marqueeX_ = 0.0f;
+      if (hoverSince_ != 0) hoverSince_ = juce::Time::getMillisecondCounter();
+    }
     if (newTone && theme::kStyle.glitchOnLoad && theme::animate())
       glitchUntil_ = juce::Time::getMillisecondCounter() + kGlitchMs;
     repaint();
@@ -411,8 +423,7 @@ public:
         repaint();  // the hovered arrow lights up
       }
       if (arrow != 0 && cursor_) {
-        setHelpText(juce::String(arrow < 0 ? "Previous tone" : "Next tone") + " from the results this one came from ("
-                    + juce::String(cursor_->position) + " of " + juce::String(cursor_->total) + ").");
+        showArrowHelp();
       } else if (knob >= 0) {
         const auto k = knobs()[static_cast<size_t>(knob)];
         setHelpText(juce::String(k.name) + ": drag up or down to adjust. Shift+drag: fine · double-click: reset.");
@@ -594,6 +605,11 @@ private:
     return 0;
   }
 
+  void showArrowHelp() {
+    setHelpText(juce::String(hoverArrow_ < 0 ? "Previous tone" : "Next tone") + " from the results this one came from ("
+                + juce::String(cursor_->position) + " of " + juce::String(cursor_->total) + ").");
+  }
+
   bool arrowEnabled(int arrow) const {
     return cursor_ && !cursor_->busy && (arrow < 0 ? cursor_->canPrev : cursor_->canNext);
   }
@@ -628,6 +644,7 @@ private:
                                     && next->busy == cursor_->busy));
     if (same) return;
     cursor_ = next;
+    if (hoverArrow_ != 0 && cursor_) showArrowHelp();  // the position under the pointer moved
     titleCut_ = isCut(titleText(), titleSpot());
     bypassed_ = {};
     repaint();
