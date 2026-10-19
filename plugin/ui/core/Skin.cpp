@@ -115,6 +115,7 @@ bool applyManifest(const juce::String& json, const juce::File& dir) {
       {"muted", &kMuted},        {"subtle", &kSubtle},       {"highlight", &kHighlight},
       {"gray", &kGray},          {"border", &kBorder},       {"surface", &kSurface},
       {"surfaceRaised", &kSurfaceRaised}, {"segmentedTrack", &kSegmentedTrack}, {"panelBg", &kPanelBg},
+      {"meterLow", &kMeterLow},  {"meterMid", &kMeterMid},   {"meterHigh", &kMeterHigh},
   };
   if (const auto* colors = v["colors"].getDynamicObject())
     for (const auto& [name, target] : tokens) {

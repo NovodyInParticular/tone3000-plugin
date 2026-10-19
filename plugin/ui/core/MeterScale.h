@@ -1,13 +1,25 @@
 // Shared meter scale and colour ramp (port of meterColor.ts + the level →
 // colour math in BlockLed.tsx) for DbMeter, DotMeter, BlockLed and the
-// gallery energy glow. Stops are the brand accents: blue → yellow → red.
+// gallery energy glow. Stops are the skin's meter tokens (theme::kMeterLow /
+// Mid / High), classic blue → yellow → red.
 #pragma once
 
 #include <juce_graphics/juce_graphics.h>
 
 #include <algorithm>
 
+#include "core/Theme.h"
+
 namespace t3k::ui::meter {
+
+// Channel-wise blend, rounded to 8-bit like the CSS `rgb()` string.
+inline juce::Colour lerp(juce::Colour a, juce::Colour b, float t) {
+  const auto mix = [t](juce::uint8 x, juce::uint8 y) {
+    return static_cast<juce::uint8>(juce::roundToInt(x + (y - x) * t));
+  };
+  return juce::Colour(mix(a.getRed(), b.getRed()), mix(a.getGreen(), b.getGreen()),
+                      mix(a.getBlue(), b.getBlue()));
+}
 
 inline constexpr float kMinDb = -60.0f;
 // Top of the scale = 0 dBFS: the last dot lights exactly at clipping.
@@ -16,16 +28,11 @@ inline constexpr float kMaxDb = 0.0f;
 // Level → 0..1 along the scale, clamped.
 inline float unit(float db) { return std::clamp((db - kMinDb) / (kMaxDb - kMinDb), 0.0f, 1.0f); }
 
-// Dot colour along the rail: 0 = bottom (blue), 0.5 = middle (yellow),
-// 1 = top (red). Channels are rounded to 8-bit like the CSS `rgb()` string.
+// Dot colour along the rail: 0 = bottom (low), 0.5 = middle (mid),
+// 1 = top (high).
 inline juce::Colour gradientColour(float position) {
-  const auto ch = [](float v) { return static_cast<juce::uint8>(juce::roundToInt(255.0f * v)); };
-  if (position <= 0.5f) {
-    const float t = position * 2.0f;
-    return juce::Colour(ch(t), ch(t), ch(1.0f - t));
-  }
-  const float t = (position - 0.5f) * 2.0f;
-  return juce::Colour(255, ch(1.0f - t), 0);
+  if (position <= 0.5f) return lerp(theme::kMeterLow, theme::kMeterMid, position * 2.0f);
+  return lerp(theme::kMeterMid, theme::kMeterHigh, (position - 0.5f) * 2.0f);
 }
 
 // Gallery tile energy (BlockLed.tsx useBlockEnergy)
@@ -39,16 +46,10 @@ struct Energy {
 // while its intensity keeps tracking the full scale up to 0 dBFS.
 inline Energy energy(float db) {
   constexpr float kGateOffDb = -50.0f, kGateOnDb = -40.0f;
-  const juce::Colour dark(34, 34, 34), blue(0, 0, 255), yellow(255, 255, 0), red(255, 0, 0);
+  const juce::Colour dark(34, 34, 34), blue = theme::kMeterLow.withAlpha(1.0f),
+                     yellow = theme::kMeterMid.withAlpha(1.0f), red = theme::kMeterHigh.withAlpha(1.0f);
 
-  const auto lerp = [](juce::Colour a, juce::Colour b, float t) {
-    const auto mix = [t](juce::uint8 x, juce::uint8 y) {
-      return static_cast<juce::uint8>(juce::roundToInt(x + (y - x) * t));
-    };
-    return juce::Colour(mix(a.getRed(), b.getRed()), mix(a.getGreen(), b.getGreen()),
-                        mix(a.getBlue(), b.getBlue()));
-  };
-  // Blue/yellow plateaus with short crossfades, red at the top.
+  // Low/mid plateaus with short crossfades, high at the top.
   const auto levelColour = [&](float u) {
     constexpr float fade = 0.06f, toYellow = 0.5f, toRed = 0.85f;
     if (u < toYellow - fade) return blue;

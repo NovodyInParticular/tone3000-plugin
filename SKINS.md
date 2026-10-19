@@ -68,6 +68,7 @@ if it was the active skin, the default (Neural) is used instead.
 | `segmentedTrack` | Behind segmented switches |
 | `link`           | Links in Settings |
 | `brandRed`, `brandBlue` | Meter ends and warnings |
+| `meterLow`, `meterMid`, `meterHigh` | Level meter dots and the gallery glow, quiet → hot (default blue → yellow → red) |
 
 ### style
 

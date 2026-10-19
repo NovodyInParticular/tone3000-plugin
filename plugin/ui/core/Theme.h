@@ -44,6 +44,10 @@ inline constexpr int faceplateChromeLift(int secondaryKnobSize) {
 inline juce::Colour kBrandBlue{0xff0000ff};
 inline juce::Colour kBrandYellow{0xffffff00};
 inline juce::Colour kBrandRed{0xffff0000};
+// Level meter ramp (MeterScale.h): quiet, middle and hot ends of the scale.
+inline juce::Colour kMeterLow{0xff0000ff};
+inline juce::Colour kMeterMid{0xffffff00};
+inline juce::Colour kMeterHigh{0xffff0000};
 // Inline doc / "Learn More" links in settings.
 inline juce::Colour kLinkBlue{0xff40a6ff};
 
@@ -116,6 +120,9 @@ inline void resetToClassic() {
   kBrandBlue = juce::Colour{0xff0000ff};
   kBrandYellow = juce::Colour{0xffffff00};
   kBrandRed = juce::Colour{0xffff0000};
+  kMeterLow = juce::Colour{0xff0000ff};
+  kMeterMid = juce::Colour{0xffffff00};
+  kMeterHigh = juce::Colour{0xffff0000};
   kLinkBlue = juce::Colour{0xff40a6ff};
   kWhite = juce::Colour{0xffffffff};
   kBlack = juce::Colour{0xff000000};
