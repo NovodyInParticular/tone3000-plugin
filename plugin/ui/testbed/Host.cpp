@@ -82,6 +82,7 @@ ScaledHost::ScaledHost(Backend& backend, const Scenario& scenario, const juce::v
   // The look: a scenario names its skin; the rest keep the classic
   // (upstream) look, so their reference captures stay comparable.
   skin::apply(scenario.data.getProperty("skin", "classic").toString());
+  theme::kReduceMotion = prefs.getBool(UiPrefs::kReduceAnimations, false);  // as NativeEditor does
   root = std::make_unique<PluginRoot>(services);
   addAndMakeVisible(*root);
   setVisible(true);  // offscreen captures have no window to make us visible
