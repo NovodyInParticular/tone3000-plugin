@@ -753,6 +753,26 @@ void TONE3000Processor::refreshLocalStashCopy(const juce::String& modelUrl,
     juce::Logger::writeToLog("[LocalLoad] Couldn't restore stash copy " + stash.getFileName());
 }
 
+bool TONE3000Processor::modelUrlTakesToken(const juce::String& modelUrl, const juce::String& apiOrigin) {
+  // Only plain hostnames: anything else (userinfo, '#', '\\', '%') is a
+  // parsing trick, not a TONE3000 address.
+  const auto hostOf = [](const juce::URL& u) {
+    const juce::String host = u.getDomain().toLowerCase();
+    return host.containsOnly("abcdefghijklmnopqrstuvwxyz0123456789.-") ? host : juce::String();
+  };
+  const juce::URL url(modelUrl);
+  const juce::String host = hostOf(url);
+  if (host.isEmpty())
+    return false;
+  const juce::String scheme = url.getScheme().toLowerCase();
+  if (scheme == "https" && (host == "tone3000.com" || host.endsWith(".tone3000.com")))
+    return true;
+  if (apiOrigin.isEmpty())
+    return false;
+  const juce::URL api(apiOrigin);
+  return host == hostOf(api) && scheme == api.getScheme().toLowerCase();
+}
+
 std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& modelUrl,
                                                           const std::function<bool()>& shouldAbort) {
   juce::URL url(modelUrl);
@@ -786,7 +806,8 @@ std::vector<uint8_t> TONE3000Processor::fetchModelFromUrl(const juce::String& mo
   // attach the latest token the UI handed us, if any. Anonymous fetches still
   // work for legacy public URLs, so we degrade gracefully when no token is set.
   // Chain the option builders since `InputStreamOptions` has no copy-assign.
-  const juce::String token = getAccessToken();
+  // Never to a host the preset or project file picked: see modelUrlTakesToken.
+  const juce::String token = modelUrlTakesToken(modelUrl, toneApiOrigin) ? getAccessToken() : juce::String();
   const juce::String extraHeaders =
       token.isNotEmpty() ? juce::String("Authorization: Bearer ") + token
                          : juce::String();

@@ -275,6 +275,12 @@ public:
   // because the new TONE3000 model_url endpoints reject anonymous requests.
   void setAccessToken(const juce::String& token);
   juce::String getAccessToken() const;
+  // True when `modelUrl` may carry that token: https on tone3000.com or one
+  // of its subdomains, or the same scheme and host as `apiOrigin` (the
+  // build's API, which may be a staging or local server). A model URL comes
+  // from stored tone JSON, so a preset or project file can point it anywhere;
+  // anything else is fetched without the header.
+  static bool modelUrlTakesToken(const juce::String& modelUrl, const juce::String& apiOrigin);
   
   // Background loading (called by thread pool jobs)
   void loadToneInBackground(const std::string& blockId, int firstModelId,
