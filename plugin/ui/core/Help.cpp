@@ -110,9 +110,9 @@ std::map<Key, String> buildTable() {
   t[Key::fxReverbDecay] = knobDesktop("Decay", "reverb time (RT60), 0.2-10 s.");
   t[Key::fxReverbDamping] = knobDesktop("Damping", "how fast the highs die away in the tail.");
   t[Key::fxReverbMix] = knobDesktop("Mix", "reverb level; the dry signal stays at full level.");
-  t[Key::toneBass] = knobDesktop("Bass", "tone stack lows, 0-10: ±20 dB shelf at 150 Hz.");
-  t[Key::toneMiddle] = knobDesktop("Middle", "tone stack mids, 0-10: ±15 dB bell at 425 Hz.");
-  t[Key::toneTreble] = knobDesktop("Treble", "tone stack highs, 0-10: ±10 dB shelf at 1.8 kHz.");
+  t[Key::toneBass] = knobDesktop("Bass", "tone stack lows, 0-10: ±20 dB shelf, 150 Hz unless moved in the rig view.");
+  t[Key::toneMiddle] = knobDesktop("Middle", "tone stack mids, 0-10: ±15 dB bell, 425 Hz unless moved in the rig view.");
+  t[Key::toneTreble] = knobDesktop("Treble", "tone stack highs, 0-10: ±10 dB shelf, 1.8 kHz unless moved in the rig view.");
   t[Key::tonePower] = U("Tone Stack Power: Bass/Middle/Treble on/off.");
   t[Key::spreadOffset] =
       knobDesktop("Offset", "double-track lag, ≤24 ms toward L or R. Center: off. Right-click: advanced.");

@@ -2774,6 +2774,13 @@ struct RigToneEqTests : juce::UnitTest {
     expectWithinAbsoluteError(ToneEqOverlay::gainDb(1, 0.0f), -15.0f, 1e-4f);  // mid ±15
     expectWithinAbsoluteError(ToneEqOverlay::gainDb(2, 0.5f), 0.0f, 1e-4f);    // 5 = flat
     expectWithinAbsoluteError(ToneEqOverlay::normalisedFor(2, 4.0f), 0.7f, 1e-4f);  // treble 2 dB/step
+    beginTest("the frequency maps match the processor's log ranges");
+    expectWithinAbsoluteError(ToneEqOverlay::freqHz(0, 0.0f), 40.0, 1e-6);
+    expectWithinAbsoluteError(ToneEqOverlay::freqHz(2, 1.0f), 8000.0, 1e-6);
+    for (int band = 0; band < 3; ++band) {
+      const double stock = ToneEqOverlay::bands()[static_cast<size_t>(band)].freqHz;
+      expectWithinAbsoluteError(ToneEqOverlay::freqHz(band, ToneEqOverlay::normalisedForHz(band, stock)), stock, 1e-3);
+    }
 
     const auto fixtures = Fixtures::load(fixturesDir().getChildFile("scenarios.json"));
     const auto* scenario = fixtures.find("rig-neural");
@@ -2798,9 +2805,11 @@ struct RigToneEqTests : juce::UnitTest {
     if (rig == nullptr) return;
     auto& eqView = rig->toneEq();
     auto* bass = backend.parameter("toneBass");
-    expect(bass != nullptr);
-    if (bass == nullptr) return;
+    auto* bassFreq = backend.parameter("toneBassFreq");
+    expect(bass != nullptr && bassFreq != nullptr);
+    if (bass == nullptr || bassFreq == nullptr) return;
     bass->setValueNotifyingHost(0.5f);
+    bassFreq->setValueNotifyingHost(ToneEqOverlay::normalisedForHz(0, 150.0));
     pump(50);
 
     auto time = juce::Time::currentTimeMillis();
@@ -2826,13 +2835,26 @@ struct RigToneEqTests : juce::UnitTest {
     expect(eqView.handlePosition(0).y > start.y, "the handle dropped below 0 dB");
     expect(eqView.responseAt(60.0) < -6.0f, "the curve cuts the lows");
 
-    beginTest("a double-click on a handle sets its band flat");
+    beginTest("dragging a handle sideways moves its frequency");
+    {
+      const auto from = eqView.handlePosition(0);
+      const double hzBefore = eqView.bandHz(0);
+      at(from, true);
+      for (int step = 1; step <= 10; ++step) at(from.translated(3.0f * static_cast<float>(step), 0.0f), true);
+      at(from.translated(30.0f, 0.0f), false);
+      expect(eqView.bandHz(0) > hzBefore * 1.2, "Bass frequency went up: " + juce::String(eqView.bandHz(0)));
+      expectWithinAbsoluteError(eqView.handlePosition(0).x, from.x + 30.0f, 1.0f);
+      expectWithinAbsoluteError(eqView.handlePosition(0).y, from.y, 1.0f);  // gain left alone
+    }
+
+    beginTest("a double-click on a handle sets its band flat at the stock frequency");
     const auto h = eqView.handlePosition(0);
     for (int press = 0; press < 2; ++press) {
       at(h, true);
       at(h, false);
     }
     expectWithinAbsoluteError(bass->getValue(), 0.5f, 1e-3f);
+    expectWithinAbsoluteError(eqView.bandHz(0), 150.0, 0.5);
     window.setVisible(false);
   }
 };

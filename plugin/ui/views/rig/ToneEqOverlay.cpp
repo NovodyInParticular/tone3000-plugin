@@ -14,9 +14,9 @@ constexpr float kFineFactor = 8.0f;
 }  // namespace
 
 const std::array<ToneEqOverlay::Band, 3>& ToneEqOverlay::bands() {
-  static const std::array<Band, 3> b{{{"Bass", "toneBass", 150.0, 4.0f},
-                                      {"Middle", "toneMid", 425.0, 3.0f},
-                                      {"Treble", "toneTreble", 1800.0, 2.0f}}};
+  static const std::array<Band, 3> b{{{"Bass", "toneBass", "toneBassFreq", 150.0, 40.0, 400.0, 4.0f},
+                                      {"Middle", "toneMid", "toneMidFreq", 425.0, 150.0, 2500.0, 3.0f},
+                                      {"Treble", "toneTreble", "toneTrebleFreq", 1800.0, 800.0, 8000.0, 2.0f}}};
   return b;
 }
 
@@ -28,13 +28,25 @@ float ToneEqOverlay::normalisedFor(int band, float db) {
   return juce::jlimit(0.0f, 1.0f, (db / bands()[static_cast<size_t>(band)].dbPerStep + 5.0f) / 10.0f);
 }
 
+double ToneEqOverlay::freqHz(int band, float normalised) {
+  const auto& b = bands()[static_cast<size_t>(band)];
+  return b.minHz * std::pow(b.maxHz / b.minHz, static_cast<double>(normalised));
+}
+
+float ToneEqOverlay::normalisedForHz(int band, double hz) {
+  const auto& b = bands()[static_cast<size_t>(band)];
+  return juce::jlimit(0.0f, 1.0f, static_cast<float>(std::log(hz / b.minHz) / std::log(b.maxHz / b.minHz)));
+}
+
 ToneEqOverlay::ToneEqOverlay(Services& services) : services_(services) {
   for (size_t i = 0; i < 3; ++i) {
     params_[i] = std::make_unique<ParamBinding>(services_.backend, bands()[i].paramId);
-    params_[i]->onChange = [this] {
-      curveFor_ = {};
-      repaint();
-    };
+    freqs_[i] = std::make_unique<ParamBinding>(services_.backend, bands()[i].freqParamId);
+    for (auto* p : {params_[i].get(), freqs_[i].get()})
+      p->onChange = [this] {
+        curveFor_ = {};
+        repaint();
+      };
   }
   enabled_ = std::make_unique<ParamBinding>(services_.backend, "toneEqEnabled");
   enabled_->onChange = [this] { repaint(); };
@@ -47,6 +59,14 @@ float ToneEqOverlay::xOf(double hz) const {
   return static_cast<float>(getWidth()) * static_cast<float>(std::log(hz / 20.0) / std::log(1000.0));
 }
 
+double ToneEqOverlay::hzOfX(float x) const {
+  return 20.0 * std::pow(1000.0, static_cast<double>(x) / juce::jmax(1, getWidth()));
+}
+
+double ToneEqOverlay::bandHz(int band) const {
+  return freqHz(band, freqs_[static_cast<size_t>(band)]->normalised());
+}
+
 float ToneEqOverlay::yOf(float db) const {
   const float mid = static_cast<float>(getHeight()) / 2.0f;
   return mid - juce::jlimit(-kRangeDb, kRangeDb, db) / kRangeDb * (mid - kHandleRadius);
@@ -57,7 +77,7 @@ std::vector<EqBand> ToneEqOverlay::stack() const {
   std::vector<EqBand> out(3);
   for (int i = 0; i < 3; ++i) {
     auto& b = out[static_cast<size_t>(i)];
-    b.freqHz = bands()[static_cast<size_t>(i)].freqHz;
+    b.freqHz = bandHz(i);
     b.gainDb = gainDb(i, params_[static_cast<size_t>(i)]->normalised());
     b.type = i == 0 ? EqBandType::lowshelf : i == 1 ? EqBandType::bell : EqBandType::highshelf;
     b.q = i == 1 ? (b.gainDb < 0.0 ? 1.5 : 0.7) : 0.707;
@@ -89,8 +109,7 @@ void ToneEqOverlay::rebuildCurve() {
 }
 
 juce::Point<float> ToneEqOverlay::handlePosition(int band) const {
-  const auto& b = bands()[static_cast<size_t>(band)];
-  return {xOf(b.freqHz), yOf(gainDb(band, params_[static_cast<size_t>(band)]->normalised()))};
+  return {xOf(bandHz(band)), yOf(gainDb(band, params_[static_cast<size_t>(band)]->normalised()))};
 }
 
 void ToneEqOverlay::paint(juce::Graphics& g) {
@@ -143,19 +162,22 @@ void ToneEqOverlay::showValue(int band) {
     return;
   }
   const float db = gainDb(band, params_[static_cast<size_t>(band)]->normalised());
+  const double hz = bandHz(band);
   const auto c = handlePosition(band);
   tip_.show(*this, juce::Rectangle<float>(1.0f, 1.0f).withCentre(c).expanded(kHandleRadius),
             juce::String(bands()[static_cast<size_t>(band)].name) + "  " + (db > 0.05f ? "+" : "")
-                + juce::String(db, 1) + " dB");
+                + juce::String(db, 1) + " dB  "
+                + (hz >= 1000.0 ? juce::String(hz / 1000.0, 2) + " kHz" : juce::String(juce::roundToInt(hz)) + " Hz"));
 }
 
 void ToneEqOverlay::mouseMove(const juce::MouseEvent& e) {
   const int h = handleAt(e.position);
   if (h == hover_) return;
   hover_ = h;
-  setMouseCursor(h >= 0 ? juce::MouseCursor::UpDownResizeCursor : juce::MouseCursor::NormalCursor);
+  setMouseCursor(h >= 0 ? juce::MouseCursor::UpDownLeftRightResizeCursor : juce::MouseCursor::NormalCursor);
   setHelpText(h >= 0 ? juce::String(bands()[static_cast<size_t>(h)].name)
-                           + ": drag up or down, like the knob. Shift+drag: fine · double-click: flat."
+                           + ": drag up or down for gain, sideways for frequency. Shift+drag: fine · "
+                             "double-click: flat at the stock frequency."
                      : juce::String());
   showValue(h);
   repaint();
@@ -171,21 +193,29 @@ void ToneEqOverlay::mouseExit(const juce::MouseEvent&) {
 void ToneEqOverlay::mouseDown(const juce::MouseEvent& e) {
   drag_ = handleAt(e.position);
   if (drag_ < 0) return;
-  dragStartY_ = e.position.y;
+  dragStart_ = e.position;
   dragStartDb_ = gainDb(drag_, params_[static_cast<size_t>(drag_)]->normalised());
+  dragStartX_ = xOf(bandHz(drag_));
   params_[static_cast<size_t>(drag_)]->beginGesture();
+  freqs_[static_cast<size_t>(drag_)]->beginGesture();
   showValue(drag_);
 }
 
 void ToneEqOverlay::mouseDrag(const juce::MouseEvent& e) {
   if (drag_ < 0) return;
   const float mid = static_cast<float>(getHeight()) / 2.0f - kHandleRadius;
-  const float dbPerPx = kRangeDb / juce::jmax(1.0f, mid) / (e.mods.isShiftDown() ? kFineFactor : 1.0f);
-  const float db = dragStartDb_ + (dragStartY_ - e.position.y) * dbPerPx;
+  const float fine = e.mods.isShiftDown() ? kFineFactor : 1.0f;
+  const float dbPerPx = kRangeDb / juce::jmax(1.0f, mid) / fine;
+  const float db = dragStartDb_ + (dragStart_.y - e.position.y) * dbPerPx;
   params_[static_cast<size_t>(drag_)]->dragTo(normalisedFor(drag_, db));
+  // Sideways moves along the analyser's own log axis, so the handle tracks
+  // the pointer (until the band's range stops it).
+  const float x = dragStartX_ + (e.position.x - dragStart_.x) / fine;
+  freqs_[static_cast<size_t>(drag_)]->dragTo(normalisedForHz(drag_, hzOfX(x)));
   if (e.mods.isShiftDown()) {  // re-anchor so toggling Shift never jumps
-    dragStartY_ = e.position.y;
+    dragStart_ = e.position;
     dragStartDb_ = gainDb(drag_, params_[static_cast<size_t>(drag_)]->normalised());
+    dragStartX_ = xOf(bandHz(drag_));
   }
   curveFor_ = {};
   showValue(drag_);
@@ -195,6 +225,7 @@ void ToneEqOverlay::mouseDrag(const juce::MouseEvent& e) {
 void ToneEqOverlay::mouseUp(const juce::MouseEvent& e) {
   if (drag_ < 0) return;
   params_[static_cast<size_t>(drag_)]->endGesture();
+  freqs_[static_cast<size_t>(drag_)]->endGesture();
   drag_ = -1;
   hover_ = handleAt(e.position);
   if (hover_ < 0) tip_.hide();
@@ -205,6 +236,7 @@ void ToneEqOverlay::mouseDoubleClick(const juce::MouseEvent& e) {
   const int h = handleAt(e.position);
   if (h < 0) return;
   params_[static_cast<size_t>(h)]->set(0.5f);  // 5 on the knob: flat
+  freqs_[static_cast<size_t>(h)]->set(normalisedForHz(h, bands()[static_cast<size_t>(h)].freqHz));
   curveFor_ = {};
   showValue(h);
   repaint();

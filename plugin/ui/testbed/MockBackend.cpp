@@ -40,6 +40,9 @@ constexpr SliderDefault kSliders[] = {
     {"alignOffset", 0.5f},       {"alignWobble", 0.25f},  {"alignCrossover", 0.5f},
     {"chainPanLeft", 0.0f},      {"chainPanRight", 1.0f},
     {"toneBass", 0.5f},          {"toneMid", 0.55f},      {"toneTreble", 0.45f},
+    // Tone stack band frequencies at 150 Hz / 425 Hz / 1.8 kHz on their log
+    // maps (40-400, 150-2500, 800-8000 Hz).
+    {"toneBassFreq", 0.5740f},   {"toneMidFreq", 0.3702f}, {"toneTrebleFreq", 0.3522f},
     {"gateThreshold", 0.35f},    {"inputCalibrationLevel", 0.5f},
     // The gate deck's real-unit defaults (50 ms / 20 ms / 80 dB) on their
     // normalised maps (KnobScale.h).

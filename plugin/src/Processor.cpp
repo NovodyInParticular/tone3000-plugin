@@ -153,6 +153,9 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.toneBass = get("toneBass");
   paramRefs.toneMid = get("toneMid");
   paramRefs.toneTreble = get("toneTreble");
+  paramRefs.toneBassFreq = get("toneBassFreq");
+  paramRefs.toneMidFreq = get("toneMidFreq");
+  paramRefs.toneTrebleFreq = get("toneTrebleFreq");
   paramRefs.gateThreshold = get("gateThreshold");
   paramRefs.gateEnabled = get("gateEnabled");
   paramRefs.gateRelease = get("gateRelease");
@@ -484,6 +487,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       juce::ParameterID{"inputCalGain", 64}, "inputCalGain",
       juce::NormalisableRange<float>(-InputCalibration::kMaxGainDb, InputCalibration::kMaxGainDb, 0.01f), 0.0f,
       juce::AudioParameterFloatAttributes().withLabel("dB")));
+
+  // Tone stack band frequencies (dragged sideways on the rig view's EQ
+  // curve). Log maps over each band's useful sweep; the defaults are the
+  // stack's original fixed voicing, so sessions and presets saved before
+  // these existed sound unchanged.
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"toneBassFreq", 65}, "toneBassFreq", logRange(40.0f, 400.0f), 150.0f,
+      wholeUnitText("Hz")));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"toneMidFreq", 66}, "toneMidFreq", logRange(150.0f, 2500.0f), 425.0f,
+      wholeUnitText("Hz")));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"toneTrebleFreq", 67}, "toneTrebleFreq", logRange(800.0f, 8000.0f), 1800.0f,
+      wholeUnitText("Hz")));
 
   return layout;
 }
@@ -1186,7 +1203,8 @@ bool TONE3000Processor::isBusesLayoutSupported(const BusesLayout& layouts) const
 // (BasicNamToneStack, https://github.com/sdatkinson/NeuralAmpModelerPlugin):
 // knobs run 0-10 with 5 flat, each band maps linearly to dB with its own
 // sweep (bass ±20 dB, mid ±15 dB, treble ±10 dB), and the mid bell widens
-// when boosting (Q 0.7 vs 1.5) so pushed mids don't turn honky.
+// when boosting (Q 0.7 vs 1.5) so pushed mids don't turn honky. Each band's
+// frequency is its own parameter (defaults 150 Hz / 425 Hz / 1.8 kHz).
 void TONE3000Processor::updateEqCoefficients() {
   const double rate = getSampleRate();
   const float bassDb = 4.0f * (cacheBassTone - 5.0f);
@@ -1194,13 +1212,13 @@ void TONE3000Processor::updateEqCoefficients() {
   const float trebleDb = 2.0f * (cacheTrebleTone - 5.0f);
 
   *bassFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowShelf(
-      rate, clampBelowNyquist(rate, 150.0f), 0.707f,
+      rate, clampBelowNyquist(rate, cacheBassFreq), 0.707f,
       juce::Decibels::decibelsToGain(bassDb));
   *midFilter.state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter(
-      rate, clampBelowNyquist(rate, 425.0f), midDb < 0.0f ? 1.5f : 0.7f,
+      rate, clampBelowNyquist(rate, cacheMidFreq), midDb < 0.0f ? 1.5f : 0.7f,
       juce::Decibels::decibelsToGain(midDb));
   *trebleFilter.state = *juce::dsp::IIR::Coefficients<float>::makeHighShelf(
-      rate, clampBelowNyquist(rate, 1800.0f), 0.707f,
+      rate, clampBelowNyquist(rate, cacheTrebleFreq), 0.707f,
       juce::Decibels::decibelsToGain(trebleDb));
 }
 
@@ -1262,6 +1280,9 @@ void TONE3000Processor::updateCachedParameters() {
   updateFloat(cacheBassTone, paramRefs.toneBass, true);
   updateFloat(cacheMidTone, paramRefs.toneMid, true);
   updateFloat(cacheTrebleTone, paramRefs.toneTreble, true);
+  updateFloat(cacheBassFreq, paramRefs.toneBassFreq, true);
+  updateFloat(cacheMidFreq, paramRefs.toneMidFreq, true);
+  updateFloat(cacheTrebleFreq, paramRefs.toneTrebleFreq, true);
   updateFloat(cacheGateThreshold, paramRefs.gateThreshold);
   updateFloat(cacheGateRelease, paramRefs.gateRelease);
   updateFloat(cacheGateHold, paramRefs.gateHold);

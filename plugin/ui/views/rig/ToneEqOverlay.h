@@ -1,12 +1,13 @@
 // The Bass / Middle / Treble tone stack drawn over the rig view's output
 // spectrum: the stack's combined response as a curve, with one handle per
-// band to drag up or down. The handles write the same parameters as the
-// faceplate knobs (as one host gesture per drag) and follow them, host
-// automation and presets back, so both stay in step.
+// band. Dragging a handle up or down sets its gain (the same parameter as the
+// faceplate knob), sideways its frequency (toneBassFreq / toneMidFreq /
+// toneTrebleFreq, which only this overlay shows). One host gesture per drag;
+// the handles follow the knobs, host automation and presets back.
 //
 // The curve is computed from the stack's real voicing (Processor.cpp
-// updateEqCoefficients: low shelf 150 Hz, bell 425 Hz, high shelf 1.8 kHz,
-// each knob 0..10 mapping linearly to ±20 / ±15 / ±10 dB) with the EQ
+// updateEqCoefficients: low shelf, bell, high shelf, each knob 0..10 mapping
+// linearly to ±20 / ±15 / ±10 dB, each frequency on a log map) with the EQ
 // editor's biquad math, so it is the audio truth. The stack runs before the
 // output tap, so the curve shapes the very trace it sits on.
 //
@@ -36,13 +37,20 @@ public:
   struct Band {
     const char* name;
     const char* paramId;
-    double freqHz;
+    const char* freqParamId;
+    double freqHz;  // the default
+    double minHz, maxHz;  // the frequency parameter's log range
     float dbPerStep;  // dB per knob step (0..10, 5 = flat)
   };
   static const std::array<Band, 3>& bands();
   // A knob position (normalised 0..1) as the band's gain in dB, and back.
   static float gainDb(int band, float normalised);
   static float normalisedFor(int band, float gainDb);
+  // A frequency knob position (normalised 0..1) in Hz, and back.
+  static double freqHz(int band, float normalised);
+  static float normalisedForHz(int band, double hz);
+  // The band's current frequency.
+  double bandHz(int band) const;
 
   // The stack's combined response (dB) at `hz`, for the current knobs.
   float responseAt(double hz) const;
@@ -61,6 +69,7 @@ public:
 private:
   float xOf(double hz) const;
   float yOf(float db) const;
+  double hzOfX(float x) const;
   int handleAt(juce::Point<float> p) const;
   void showValue(int band);
   void rebuildCurve();
@@ -68,12 +77,14 @@ private:
   double sampleRate() const;
 
   Services& services_;
-  std::array<std::unique_ptr<ParamBinding>, 3> params_;
+  std::array<std::unique_ptr<ParamBinding>, 3> params_, freqs_;
   std::unique_ptr<ParamBinding> enabled_;
   juce::Path curve_;
   juce::Rectangle<int> curveFor_;  // the bounds curve_ was built for
   int hover_ = -1, drag_ = -1;
-  float dragStartY_ = 0.0f, dragStartDb_ = 0.0f;
+  juce::Point<float> dragStart_;
+  float dragStartDb_ = 0.0f;
+  float dragStartX_ = 0.0f;  // the handle's x at the anchor
   HoverTip tip_;
 };
 

@@ -1274,6 +1274,9 @@ private:
     std::atomic<float>* toneBass = nullptr;
     std::atomic<float>* toneMid = nullptr;
     std::atomic<float>* toneTreble = nullptr;
+    std::atomic<float>* toneBassFreq = nullptr;
+    std::atomic<float>* toneMidFreq = nullptr;
+    std::atomic<float>* toneTrebleFreq = nullptr;
     std::atomic<float>* gateThreshold = nullptr;
     std::atomic<float>* gateEnabled = nullptr;
     std::atomic<float>* gateRelease = nullptr;
@@ -1379,6 +1382,9 @@ private:
   float cacheBassTone = 5.0f;
   float cacheMidTone = 5.0f;
   float cacheTrebleTone = 5.0f;
+  float cacheBassFreq = 150.0f;
+  float cacheMidFreq = 425.0f;
+  float cacheTrebleFreq = 1800.0f;
   float cacheGateThreshold = -80.0f;
   bool cacheGateEnabled = true;
   float cacheGateRelease = 50.0f;   // ms

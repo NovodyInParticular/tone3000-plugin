@@ -49,7 +49,8 @@ juce::String oneOf(const juce::var& v, std::initializer_list<const char*> allowe
 bool allowedParam(const juce::String& id) {
   static const juce::StringArray ids = {
       "inputLevel",     "outputLevel",      "outputBalance",   "toneBass",        "toneMid",
-      "toneTreble",     "gateThreshold",    "gateEnabled",     "gateRelease",     "gateHold",
+      "toneTreble",     "toneBassFreq",     "toneMidFreq",     "toneTrebleFreq",
+      "gateThreshold",    "gateEnabled",     "gateRelease",     "gateHold",
       "gateRange",      "toneEqEnabled",    "pitchEnabled",    "pitchSemitones",  "pitchStep",
       "pitchTonality",  "pitchWindow",      "spreadEnabled",   "spreadOffset",    "spreadWobble",
       "spreadWobbleEnabled", "spreadCrossover", "spreadCrossoverEnabled", "spreadDiffuseEnabled",

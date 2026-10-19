@@ -12,6 +12,7 @@
 //     and getChainState reports the capability to the UI,
 //   - without a stereo output stereo chains keep running and are summed to
 //     mono, ½(L+R) with solo/polarity live inside the sum,
+//   - the tone stack's mid bell sits where its frequency parameter says,
 //   - parameter state survives a save/restore round trip,
 //   - garbage, legacy-format, and newer-schema state blobs are ignored,
 //   - the tail report covers the DC blocker floor.
@@ -74,6 +75,28 @@ TEST(ProcessorTest, EmptyChainAt48kIsTransparentWithZeroLatency) {
 
   EXPECT_NEAR(settledGainDb(out, in, 997.0, kFs), 0.0, 0.05);
   EXPECT_EQ(bestCorrelationLag(out, in, 16384, 4096, 32), 0) << "48k path must add no delay";
+}
+
+TEST(ProcessorTest, ToneStackMidFollowsItsFrequencyParameter) {
+  // Mid on 10 (+15 dB bell). At the stock 425 Hz a 1.5 kHz tone sits well
+  // off the bell; moved to 1.5 kHz the bell lands on it at full boost.
+  const auto gainAt1500 = [](float midHz) {
+    TONE3000Processor proc;
+    proc.setPlayConfigDetails(2, 2, kFs, 512);
+    proc.prepareToPlay(kFs, 512);
+    auto set = [&](const char* id, float value) {
+      auto* p = proc.parameters.getParameter(id);
+      p->setValueNotifyingHost(p->convertTo0to1(value));
+    };
+    set("toneMid", 10.0f);
+    set("toneMidFreq", midHz);
+    const auto in = makeSine(93 * 512, 1500.0, 0.1f);
+    return settledGainDb(processThrough(proc, in, 512), in, 1500.0, kFs);
+  };
+  const double stock = gainAt1500(425.0f);
+  const double moved = gainAt1500(1500.0f);
+  EXPECT_LT(stock, 6.0);
+  EXPECT_NEAR(moved, 15.0, 0.5);
 }
 
 TEST(ProcessorTest, SpreadStaysIdleWithoutAStereoOutput) {
