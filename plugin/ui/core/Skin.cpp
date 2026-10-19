@@ -16,6 +16,8 @@ struct BuiltIn {
   const char* id;
   const char* data;
   int size;
+  const char* background = nullptr;  // embedded bg.svg, if the skin has one
+  int backgroundSize = 0;
 };
 const std::vector<BuiltIn>& builtIns() {
   static const std::vector<BuiltIn> list = {
@@ -23,6 +25,8 @@ const std::vector<BuiltIn>& builtIns() {
       {"minimal", UiBinaryData::skin_minimal_json, UiBinaryData::skin_minimal_jsonSize},
       {"vintage", UiBinaryData::skin_vintage_json, UiBinaryData::skin_vintage_jsonSize},
       {"classic", UiBinaryData::skin_classic_json, UiBinaryData::skin_classic_jsonSize},
+      {"burningchurch", UiBinaryData::skin_burningchurch_json, UiBinaryData::skin_burningchurch_jsonSize,
+       UiBinaryData::skin_burningchurch_bg_svg, UiBinaryData::skin_burningchurch_bg_svgSize},
   };
   return list;
 }
@@ -102,7 +106,7 @@ std::vector<Info> available() {
   return out;
 }
 
-bool applyManifest(const juce::String& json, const juce::File& dir) {
+bool applyManifest(const juce::String& json, const juce::File& dir, const juce::String& builtInBackground) {
   juce::var v;
   if (json.isEmpty() || juce::JSON::parse(json, v).failed() || v.getDynamicObject() == nullptr) return false;
 
@@ -151,10 +155,13 @@ bool applyManifest(const juce::String& json, const juce::File& dir) {
     kLogo.glow = unit(logo["glow"], 0.0f);
   }
 
-  // Optional background art: a small SVG inside the skin's own folder.
+  // Optional background art: a small SVG inside the skin's own folder, or
+  // embedded alongside a built-in's manifest.
   backgroundSlot().reset();
   const juce::String bg = v["backgroundImage"].toString();
-  if (bg.isNotEmpty() && dir != juce::File() && !bg.containsAnyOf("/\\") && bg.endsWithIgnoreCase(".svg")) {
+  if (builtInBackground.isNotEmpty()) {
+    backgroundSlot() = juce::Drawable::createFromSVGString(builtInBackground);
+  } else if (bg.isNotEmpty() && dir != juce::File() && !bg.containsAnyOf("/\\") && bg.endsWithIgnoreCase(".svg")) {
     const juce::String svg = readCapped(dir.getChildFile(bg), kMaxBackgroundBytes);
     if (svg.isNotEmpty()) backgroundSlot() = juce::Drawable::createFromSVGString(svg);
   }
@@ -165,7 +172,10 @@ bool applyManifest(const juce::String& json, const juce::File& dir) {
 juce::String apply(const juce::String& requested) {
   const juce::String id = requested.isNotEmpty() ? requested : juce::String(kDefaultId);
   for (const auto& b : builtIns())
-    if (id == b.id && applyManifest(juce::String::fromUTF8(b.data, b.size), {})) return id;
+    if (id == b.id &&
+        applyManifest(juce::String::fromUTF8(b.data, b.size), {},
+                      b.background != nullptr ? juce::String::fromUTF8(b.background, b.backgroundSize) : juce::String()))
+      return id;
   const juce::File dir = userSkinsDir().getChildFile(juce::File::createLegalFileName(id));
   if (id.isNotEmpty() && dir.isDirectory() &&
       applyManifest(readCapped(dir.getChildFile("skin.json"), kMaxManifestBytes), dir))

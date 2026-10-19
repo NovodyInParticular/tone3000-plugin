@@ -33,7 +33,7 @@ struct Info {
 // %APPDATA%\TONE3000\Skins on Windows.
 juce::File userSkinsDir();
 
-// Built-ins first (Neural, Minimal, Vintage, Classic), then valid user skins
+// Built-ins first (Neural, Minimal, Vintage, Classic, Burning Church), then valid user skins
 // by name. A user folder named like a built-in is skipped.
 std::vector<Info> available();
 
@@ -43,8 +43,9 @@ juce::String apply(const juce::String& id);
 
 // Parses a manifest onto the classic base and applies it; false (and
 // nothing changed) when it isn't a usable manifest. `dir` resolves the
-// optional background asset. Exposed for tests.
-bool applyManifest(const juce::String& json, const juce::File& dir);
+// optional background asset; a built-in passes its embedded SVG as
+// `builtInBackground` instead. Exposed for tests.
+bool applyManifest(const juce::String& json, const juce::File& dir, const juce::String& builtInBackground = {});
 
 // The applied skin's background art, or null.
 const juce::Drawable* background();

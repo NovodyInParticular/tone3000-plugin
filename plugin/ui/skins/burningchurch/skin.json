@@ -1,0 +1,45 @@
+{
+  "name": "Burning Church",
+  "author": "NovodyInParticular",
+  "version": "1.0",
+  "description": "Corpse-paint black metal: true black, bone white, frost steel and fire under a cold moon.",
+  "colors": {
+    "accent": "#C8D2DC",
+    "brandRed": "#8B0000",
+    "brandBlue": "#2F4A66",
+    "link": "#9FB3C8",
+    "text": "#ECEAE6",
+    "black": "#000000",
+    "muted": "#ECEAE699",
+    "subtle": "#ECEAE661",
+    "highlight": "#C8D2DC24",
+    "gray": "#6E747B",
+    "border": "#C8D2DC33",
+    "surface": "#0B0C0E",
+    "surfaceRaised": "#121417",
+    "segmentedTrack": "#C8D2DC1F",
+    "panelBg": "#08090A",
+    "meterLow": "#2F4A66",
+    "meterMid": "#C8D2DC",
+    "meterHigh": "#B3200A"
+  },
+  "logo": {
+    "style": "outline",
+    "color": "#ECEAE6",
+    "echo": "#8B000099",
+    "glow": 0.35
+  },
+  "style": {
+    "knob": "ring",
+    "glow": 0.3,
+    "scanlines": 0.12,
+    "grid": 0,
+    "monoLabels": true,
+    "animations": true,
+    "glitchOnLoad": true,
+    "grille": "photo",
+    "knobFace": "#0E0F11",
+    "background": "#000000"
+  },
+  "backgroundImage": "bg.svg"
+}

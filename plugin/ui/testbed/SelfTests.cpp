@@ -1008,8 +1008,11 @@ struct SkinTests : juce::UnitTest {
       const auto list = skin::available();
       juce::StringArray ids;
       for (const auto& i : list) ids.add(i.id);
-      for (const auto* id : {"neural", "minimal", "vintage", "classic"}) expect(ids.contains(id), id);
+      for (const auto* id : {"neural", "minimal", "vintage", "classic", "burningchurch"}) expect(ids.contains(id), id);
       expectEquals(skin::apply("vintage"), juce::String("vintage"));
+      expect(skin::background() == nullptr, "vintage has no background art");
+      expectEquals(skin::apply("burningchurch"), juce::String("burningchurch"));
+      expect(skin::background() != nullptr, "burningchurch loads its embedded background");
       expectEquals(skin::apply("no-such-skin"), juce::String(skin::kDefaultId));
       expect(theme::kStyle.knob == theme::KnobStyle::ring, "neural uses ring knobs");
       expectEquals(skin::apply("classic"), juce::String("classic"));

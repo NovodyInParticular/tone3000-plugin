@@ -8,13 +8,19 @@ set(T3K_UI_DIR "${CMAKE_CURRENT_LIST_DIR}")
 # Embedded fonts (Roboto Mono and Arimo, both Apache-2.0) and brand artwork,
 # in their own namespace/header (UiBinaryData) so they read as UI assets.
 # Built-in skins: one folder per skin with its skin.json manifest (the same
-# format users drop into their skins folder, see SKINS.md). Copied under
-# unique names first, since binary data symbols come from file names.
+# format users drop into their skins folder, see SKINS.md) and an optional
+# bg.svg. Copied under unique names first, since binary data symbols come
+# from file names.
 set(T3K_BUILTIN_SKIN_FILES)
-foreach(_skin classic neural minimal vintage)
+foreach(_skin classic neural minimal vintage burningchurch)
     configure_file("${T3K_UI_DIR}/skins/${_skin}/skin.json"
                    "${CMAKE_BINARY_DIR}/t3k_skins/skin_${_skin}.json" COPYONLY)
     list(APPEND T3K_BUILTIN_SKIN_FILES "${CMAKE_BINARY_DIR}/t3k_skins/skin_${_skin}.json")
+    if (EXISTS "${T3K_UI_DIR}/skins/${_skin}/bg.svg")
+        configure_file("${T3K_UI_DIR}/skins/${_skin}/bg.svg"
+                       "${CMAKE_BINARY_DIR}/t3k_skins/skin_${_skin}_bg.svg" COPYONLY)
+        list(APPEND T3K_BUILTIN_SKIN_FILES "${CMAKE_BINARY_DIR}/t3k_skins/skin_${_skin}_bg.svg")
+    endif()
 endforeach()
 
 if (NOT TARGET NativeUiAssets)

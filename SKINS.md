@@ -17,8 +17,8 @@ Each skin is a folder holding a `skin.json` manifest:
 
 **Settings → Plugin → Skin → Open skins folder** creates and opens it. The
 folder name is the skin's id. Reopen Settings to see a new skin in the list.
-A folder named like a built-in (`neural`, `minimal`, `vintage`, `classic`) is
-ignored.
+A folder named like a built-in (`neural`, `minimal`, `vintage`, `classic`,
+`burningchurch`) is ignored.
 
 The built-ins are in `plugin/ui/skins/` and are good starting points: copy
 one, rename the folder, edit.
