@@ -101,7 +101,7 @@ TEST(ProcessorTest, InputCalibrationMeasuresAndApplies) {
   proc.setPlayConfigDetails(2, 2, kFs, kBlock);
   proc.prepareToPlay(kFs, kBlock);
   EXPECT_EQ(denorm(proc, "inputCalEnabled"), 0.0f);
-  EXPECT_EQ(denorm(proc, "inputCalGain"), 0.0f);
+  EXPECT_NEAR(denorm(proc, "inputCalGain"), 0.0f, 1e-4f);  // ARM rounds the range to -5e-7
   EXPECT_FALSE(proc.pollInputCalibration().hasProperty("measuredDb"));
 
   const double before = outputLevel(proc);
