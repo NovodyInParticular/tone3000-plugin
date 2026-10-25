@@ -149,4 +149,7 @@ target_link_libraries(DspTests
 add_dependencies(DspTests NAM)
 
 include(GoogleTest)
-gtest_discover_tests(DspTests)
+# Discovery runs the binary at build time. The default 5 s limit is too
+# tight for the x86_64 build's first launch under Rosetta on the arm64 CI
+# runner (it timed out there on 2026-10-25).
+gtest_discover_tests(DspTests DISCOVERY_TIMEOUT 60)
