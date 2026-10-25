@@ -29,6 +29,7 @@
 #include "Spread.h"
 #include "StereoOffset.h"
 #include "TimeFx.h"
+#include "CloudsFx.h"
 #include "InputCalibration.h"
 #include "RigShare.h"
 #include <set>
@@ -1320,8 +1321,22 @@ private:
     std::atomic<float>* fxOrder = nullptr;
     std::atomic<float>* inputCalEnabled = nullptr;
     std::atomic<float>* inputCalGain = nullptr;
+    std::atomic<float>* cloudsEnabled = nullptr;
+    std::atomic<float>* cloudsMode = nullptr;
+    std::atomic<float>* cloudsQuality = nullptr;
+    std::atomic<float>* cloudsFreeze = nullptr;
+    std::atomic<float>* cloudsPosition = nullptr;
+    std::atomic<float>* cloudsSize = nullptr;
+    std::atomic<float>* cloudsPitch = nullptr;
+    std::atomic<float>* cloudsDensity = nullptr;
+    std::atomic<float>* cloudsTexture = nullptr;
+    std::atomic<float>* cloudsBlend = nullptr;
+    std::atomic<float>* cloudsSpread = nullptr;
+    std::atomic<float>* cloudsFeedback = nullptr;
+    std::atomic<float>* cloudsReverb = nullptr;
   } paramRefs;
   timefx::Params timeFxParamsFromRefs() const;
+  cloudsfx::Params cloudsParamsFromRefs() const;
   void resolveParamRefs();
 
   /** The oversampling factor the osEnabled/osFactor parameters currently
@@ -1403,6 +1418,7 @@ private:
   bool cachePitchEnabled = false;
   PitchShift::Params cachePitch;
   timefx::Params cacheTimeFx;
+  cloudsfx::Params cacheClouds;
   float cacheInputCalGain = 1.0f;  // linear; 1 while calibration is off
 
   // Guided input calibration (see InputCalibration.h). The last measured
@@ -1413,6 +1429,9 @@ private:
   // Time effects after the tone stack (see TimeFx.h). Host tempo from the
   // last callback, for the tail report.
   timefx::Rack timeFx;
+  // Mutable Instruments Clouds between the tone stack and the time FX
+  // (see CloudsFx.h).
+  cloudsfx::Engine cloudsFx;
   // The plugin's output for the rig view's analyser, addressed through the
   // block spectrum API as kOutputSpectrumId.
   BlockSpectrum outputSpectrum;

@@ -57,6 +57,12 @@ constexpr SliderDefault kSliders[] = {
     {"fxReverbSize", 0.5f},      {"fxReverbDecay", 0.5617f}, {"fxReverbDamping", 0.4f},
     {"fxReverbMix", 0.25f},      {"fxModRate", 0.5233f},   {"fxModDepth", 0.5f},
     {"fxModMix", 0.5f},          {"fxOrder", 0.0f},
+    // Clouds at the processor defaults (Granular, 16-bit stereo, 0 st).
+    {"cloudsMode", 0.0f},        {"cloudsQuality", 0.0f},
+    {"cloudsPosition", 0.3f},    {"cloudsSize", 0.5f},
+    {"cloudsPitch", 0.5f},       {"cloudsDensity", 0.65f}, {"cloudsTexture", 0.5f},
+    {"cloudsBlend", 0.5f},       {"cloudsSpread", 0.5f},   {"cloudsFeedback", 0.0f},
+    {"cloudsReverb", 0.3f},
     {"inputCalGain", 0.5f},  // 0 dB on the ±24 dB map
 };
 struct ToggleDefault {
@@ -78,6 +84,7 @@ constexpr ToggleDefault kToggles[] = {
     {"fxDelayPingPong", false},        {"fxReverbEnabled", false},
     {"fxModEnabled", false},           {"fxModType", false},
     {"inputCalEnabled", false},
+    {"cloudsEnabled", false},          {"cloudsFreeze", false},
 };
 
 }  // namespace

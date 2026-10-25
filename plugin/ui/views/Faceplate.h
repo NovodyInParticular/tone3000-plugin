@@ -1,14 +1,15 @@
 // Bottom faceplate (port of Faceplate.tsx): main input/output gain, the gate
-// and pitch groups (GateGroup / PitchGroup, each with an advanced deck) and
-// the global 3-band tone stack, the stereo-image slot (Spread in mono chain
-// mode, Align in stereo) and, when they apply, the input-mode button, the
-// output balance knob and auto balance. Gate, pitch and tone stack carry
-// power switches (APVTS bools, so they automate and persist like everything
-// else).
+// and pitch groups (GateGroup / PitchGroup, each with an advanced deck), the
+// Clouds granular group (CloudsGroup, in the place the tone stack's knobs
+// had; the tone stack is edited on the rig view's EQ curve), the
+// stereo-image slot (Spread in mono chain mode, Align in stereo) and, when
+// they apply, the input-mode button, the output balance knob and auto
+// balance. Gate, pitch and Clouds carry power switches (APVTS bools, so they
+// automate and persist like everything else).
 //
 // Five peer groups share the plate width (CSS space-between): input, the
-// effects cluster (gate + pitch, spaced like the tone stack's knobs so they
-// read as one), tone stack, image slot, output. Every group has a fixed
+// effects cluster (gate + pitch, spaced like the Clouds knobs so they read
+// as one), Clouds, image slot, output. Every group has a fixed
 // footprint with inactive companions hidden in place, so toggling stereo /
 // spread never shifts the plate. The effects are the exception, by design:
 // Plugin Settings → Show Gate / Show Pitch Shift picks which of them the
@@ -21,6 +22,7 @@
 
 #include <memory>
 
+#include "CloudsGroup.h"
 #include "FxGroup.h"
 #include "GateGroup.h"
 #include "PitchGroup.h"
@@ -69,9 +71,7 @@ private:
   // Time FX: after the cluster (it sits after the cab in the signal path).
   FxGroup fx_;
 
-  DimGroup toneDim_;
-  ParamKnob bass_, middle_, treble_;
-  ParamPowerButton tonePower_;
+  CloudsGroup clouds_;
 
   // Stereo-image slot: Spread in mono, Align in stereo. On a mono rig only
   // Spread dims and goes inert as a whole (the hover hint says why).

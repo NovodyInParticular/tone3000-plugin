@@ -108,6 +108,16 @@ const std::map<juce::String, Drive>& drives() {
          clickByHelp(root, "Time FX:", /*right=*/true);
          wait(200);
        }},
+      {"chrome-clouds-deck",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Density:", /*right=*/true);
+         wait(200);
+       }},
+      {"skin-neural-chrome-clouds-deck",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Density:", /*right=*/true);
+         wait(200);
+       }},
       // The advisor's sustain window, compressed: two polls 7 s apart at 90 %.
       {"chrome-lite-suggest",
        [](PluginRoot& root, MockBackend&) {

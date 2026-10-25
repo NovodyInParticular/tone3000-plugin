@@ -3421,10 +3421,10 @@ struct FaceplateEffectsTests : juce::UnitTest {
     }));
   }
 
-  // The Bass knob's left edge in root coordinates: where the tone stack landed.
+  // The Density knob's left edge in root coordinates: where the Clouds group landed.
   static int toneX(PluginRoot& root) {
-    auto* bass = knob(root, "Bass");
-    return bass == nullptr ? -1 : root.getLocalArea(bass, bass->getLocalBounds()).getX();
+    auto* density = knob(root, "Density");
+    return density == nullptr ? -1 : root.getLocalArea(density, density->getLocalBounds()).getX();
   }
 
   void runTest() override {
@@ -3459,10 +3459,10 @@ struct FaceplateEffectsTests : juce::UnitTest {
     auto* gate = knob(root, "Gate");
     expect(pitch != nullptr && gate != nullptr);
     const int both = toneX(root);
-    expect(both > gateOnly, "the tone stack moves over for the wider cluster");
+    expect(both > gateOnly, "the Clouds group moves over for the wider cluster");
     if (pitch != nullptr && gate != nullptr) {
       // Grouped: the pair sits closer together than the cluster does to the
-      // tone stack.
+      // Clouds group.
       const auto g = root.getLocalArea(gate, gate->getLocalBounds());
       const auto t = root.getLocalArea(pitch, pitch->getLocalBounds());
       const int between = t.getX() - g.getRight();
@@ -3486,7 +3486,7 @@ struct FaceplateEffectsTests : juce::UnitTest {
     expect(knob(root, "Gate") != nullptr, "the mock's gate is powered, so it stays");
     power("gateEnabled", false);
     expect(knob(root, "Gate") == nullptr);
-    expect(toneX(root) < gateOnly, "the tone stack moves back toward the input");
+    expect(toneX(root) < gateOnly, "the Clouds group moves back toward the input");
     expect(knob(root, "Input") != nullptr && knob(root, "Output") != nullptr);
 
     beginTest("the settings restore the defaults");

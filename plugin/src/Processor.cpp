@@ -193,6 +193,19 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.fxOrder = get("fxOrder");
   paramRefs.inputCalEnabled = get("inputCalEnabled");
   paramRefs.inputCalGain = get("inputCalGain");
+  paramRefs.cloudsEnabled = get("cloudsEnabled");
+  paramRefs.cloudsMode = get("cloudsMode");
+  paramRefs.cloudsQuality = get("cloudsQuality");
+  paramRefs.cloudsFreeze = get("cloudsFreeze");
+  paramRefs.cloudsPosition = get("cloudsPosition");
+  paramRefs.cloudsSize = get("cloudsSize");
+  paramRefs.cloudsPitch = get("cloudsPitch");
+  paramRefs.cloudsDensity = get("cloudsDensity");
+  paramRefs.cloudsTexture = get("cloudsTexture");
+  paramRefs.cloudsBlend = get("cloudsBlend");
+  paramRefs.cloudsSpread = get("cloudsSpread");
+  paramRefs.cloudsFeedback = get("cloudsFeedback");
+  paramRefs.cloudsReverb = get("cloudsReverb");
 }
 
 // The time-FX rack's settings, decoded from the parameter atomics. Safe on
@@ -223,6 +236,25 @@ timefx::Params TONE3000Processor::timeFxParamsFromRefs() const {
   p.mod.depth = paramRefs.fxModDepth->load();
   p.mod.mix = paramRefs.fxModMix->load();
   p.order = index(paramRefs.fxOrder);
+  return p;
+}
+
+// Clouds' settings from the parameter atomics; same threading as above.
+cloudsfx::Params TONE3000Processor::cloudsParamsFromRefs() const {
+  cloudsfx::Params p;
+  p.on = paramRefs.cloudsEnabled->load() > 0.5f;
+  p.mode = static_cast<int>(std::lround(paramRefs.cloudsMode->load()));
+  p.quality = static_cast<int>(std::lround(paramRefs.cloudsQuality->load()));
+  p.freeze = paramRefs.cloudsFreeze->load() > 0.5f;
+  p.position = paramRefs.cloudsPosition->load();
+  p.size = paramRefs.cloudsSize->load();
+  p.pitch = paramRefs.cloudsPitch->load();
+  p.density = paramRefs.cloudsDensity->load();
+  p.texture = paramRefs.cloudsTexture->load();
+  p.blend = paramRefs.cloudsBlend->load();
+  p.spread = paramRefs.cloudsSpread->load();
+  p.feedback = paramRefs.cloudsFeedback->load();
+  p.reverb = paramRefs.cloudsReverb->load();
   return p;
 }
 
@@ -502,6 +534,34 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       juce::ParameterID{"toneTrebleFreq", 67}, "toneTrebleFreq", logRange(800.0f, 8000.0f), 1800.0f,
       wholeUnitText("Hz")));
 
+  // Clouds (see CloudsFx.h), the faceplate group that replaced the tone
+  // stack knobs. Off by default so existing sessions and presets sound
+  // unchanged. The knobs are the module's own 0..1 controls (their meaning
+  // follows the mode); pitch is in semitones. Quality isn't automatable:
+  // changing it clears the recording buffer.
+  juce::StringArray cloudsModes, cloudsQualities;
+  for (const auto* name : cloudsfx::kModeNames) cloudsModes.add(name);
+  for (const auto* name : cloudsfx::kQualityNames) cloudsQualities.add(name);
+  layout.add(boolParam("cloudsEnabled", 68, false));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"cloudsMode", 69}, "cloudsMode", cloudsModes, 0));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"cloudsQuality", 70}, "cloudsQuality", cloudsQualities, 0,
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+  layout.add(boolParam("cloudsFreeze", 71, false));
+  layout.add(normParam("cloudsPosition", 72, 0.3f));
+  layout.add(normParam("cloudsSize", 73, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"cloudsPitch", 74}, "cloudsPitch",
+      juce::NormalisableRange<float>(-cloudsfx::kPitchRange, cloudsfx::kPitchRange, 0.01f), 0.0f,
+      juce::AudioParameterFloatAttributes().withLabel("st")));
+  layout.add(normParam("cloudsDensity", 75, 0.65f));
+  layout.add(normParam("cloudsTexture", 76, 0.5f));
+  layout.add(normParam("cloudsBlend", 77, 0.5f));
+  layout.add(normParam("cloudsSpread", 78, 0.5f));
+  layout.add(normParam("cloudsFeedback", 79, 0.0f));
+  layout.add(normParam("cloudsReverb", 80, 0.3f));
+
   return layout;
 }
 
@@ -704,7 +764,9 @@ double TONE3000Processor::getTailLengthSeconds() const {
   //  - The time-FX rack's repeats and reverb tail.
   const double fxTailSeconds =
       timefx::Rack::tailSeconds(timeFxParamsFromRefs(), hostBpm.load(std::memory_order_relaxed));
-  return std::max({irTailSeconds, dcBlockerTailSeconds, fxTailSeconds});
+  //  - Clouds' recording buffer and reverb.
+  const double cloudsTailSeconds = cloudsfx::Engine::tailSeconds(cloudsParamsFromRefs());
+  return std::max({irTailSeconds, dcBlockerTailSeconds, fxTailSeconds, cloudsTailSeconds});
 }
 
 // The host program API (getNumPrograms and friends) lives in
@@ -1082,6 +1144,7 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   // Every time-FX buffer is sized here for the worst case; the rack never
   // allocates while processing.
   timeFx.prepare(sampleRate, samplesPerBlock);
+  cloudsFx.prepare(sampleRate, samplesPerBlock);
   outputSpectrum.prepare(sampleRate);
   inputSpectrum.prepare(sampleRate);
 
@@ -1181,6 +1244,7 @@ void TONE3000Processor::releaseResources() {
   dcBlocker.reset();
   inputGate.reset();
   timeFx.reset();
+  cloudsFx.reset();
 }
 
 bool TONE3000Processor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -1321,6 +1385,7 @@ void TONE3000Processor::updateCachedParameters() {
       PitchShift::windowFromIndex(static_cast<int>(std::lround(paramRefs.pitchWindow->load())));
 
   cacheTimeFx = timeFxParamsFromRefs();
+  cacheClouds = cloudsParamsFromRefs();
   cacheInputCalGain = paramRefs.inputCalEnabled->load() > 0.5f
                           ? juce::Decibels::decibelsToGain(paramRefs.inputCalGain->load())
                           : 1.0f;
@@ -2294,6 +2359,12 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // EQ section (global 3-band tone stack), post-chain.
   // ##########
   processToneStack(buffer);
+
+  // ##########
+  // Clouds (granular texture, see CloudsFx.h) after the tone stack, in the
+  // faceplate's place for it. Costs one branch while off.
+  // ##########
+  cloudsFx.process(buffer, cacheClouds);
 
   // ##########
   // Time effects (delay / reverb / modulation) after the cab and tone

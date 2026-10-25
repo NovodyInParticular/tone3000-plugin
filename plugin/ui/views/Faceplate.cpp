@@ -18,10 +18,9 @@ namespace {
 // Faceplate.tsx: padding 16 30 (input/output align with the UV meters).
 constexpr int kPadX = 30, kPadY = 16;
 constexpr int kGroupGap = 10;  // knob ↔ companion within a group
-constexpr int kToneGap = 24;   // between the three tone knobs
-// Gate ↔ Pitch inside the effects cluster: the tone stack's knob spacing,
-// so the two read as one group against the wider peer gap.
-constexpr int kEffectsGap = kToneGap;
+// Gate ↔ Pitch inside the effects cluster: the Clouds knobs' spacing, so
+// the two read as one group against the wider peer gap.
+constexpr int kEffectsGap = CloudsGroup::kKnobGap;
 // Chrome boxes in a bottom-aligned row sit on the secondary-knob centreline.
 constexpr int kChromeLift = theme::faceplateChromeLift(theme::kKnobSizeSecondary);
 
@@ -226,13 +225,7 @@ Faceplate::Faceplate(Services& services)
       gateEnabled_(services.backend, "gateEnabled"),
       pitchEnabled_(services.backend, "pitchEnabled"),
       fx_(services),
-      bass_(services.backend, "toneBass",
-            primaryKnob("Bass", scales::tone(), 0.5f, help::Key::toneBass)),
-      middle_(services.backend, "toneMid",
-              primaryKnob("Middle", scales::tone(), 0.5f, help::Key::toneMiddle)),
-      treble_(services.backend, "toneTreble",
-              primaryKnob("Treble", scales::tone(), 0.5f, help::Key::toneTreble)),
-      tonePower_(services.backend, "toneEqEnabled", help::Key::tonePower),
+      clouds_(services),
       spread_(services, ImageFeature::spread),
       align_(services, ImageFeature::align),
       autoBalance_(Icon::Equal, ChromeIconButton::Tone::armed, help::Key::autoBalance),
@@ -253,13 +246,7 @@ Faceplate::Faceplate(Services& services)
   addChildComponent(fx_);
   fx_.onPowerChange = [this] { syncFlags(); };
 
-  // Powered-off section: knobs + labels dim and go inert; the power button
-  // stays outside the dimmed wrapper, bright and clickable.
-  for (auto* k : {&bass_, &middle_, &treble_}) toneDim_.addAndMakeVisible(*k);
-  toneDim_.setOff(!tonePower_.value(), false);
-  tonePower_.onValueChange = [this](bool on) { toneDim_.setOff(!on); };
-  addAndMakeVisible(toneDim_);
-  addAndMakeVisible(tonePower_);
+  addAndMakeVisible(clouds_);
 
   // Its hint (the reason it's dimmed) is set by syncFlags.
   imageDim_.addChildComponent(spread_);
@@ -366,11 +353,11 @@ void Faceplate::resized() {
   const int effectsW =
       (gate ? GateGroup::kWidth : 0) + (gate && pitch ? kEffectsGap : 0) + (pitch ? PitchGroup::kWidth : 0);
   const int fxW = fx_.isVisible() ? FxGroup::width() : 0;
-  const int toneW = 3 * primary + 2 * kToneGap + kGroupGap + box;
+  const int cloudsW = CloudsGroup::kWidth;
   const int imageW = StereoImageGroup::kWidth;
   const int outputW = box + kGroupGap + secondary + kGroupGap + primary;
   const int peers = 4 + (effectsW > 0 ? 1 : 0) + (fxW > 0 ? 1 : 0);
-  const float gap = (content.getWidth() - (inputW + effectsW + fxW + toneW + imageW + outputW)) /
+  const float gap = (content.getWidth() - (inputW + effectsW + fxW + cloudsW + imageW + outputW)) /
                     static_cast<float>(peers - 1);
 
   float x = static_cast<float>(content.getX());
@@ -392,15 +379,11 @@ void Faceplate::resized() {
   }
   if (effectsW > 0) x += gap;
 
-  // Bass / Middle / Treble + power
-  toneDim_.setBounds(at(x), knobY(primary), 3 * primary + 2 * kToneGap, Knob::heightFor(primary));
-  bass_.setTopLeftPosition(0, 0);
-  middle_.setTopLeftPosition(primary + kToneGap, 0);
-  treble_.setTopLeftPosition(2 * (primary + kToneGap), 0);
-  tonePower_.setTopLeftPosition(at(x) + 3 * primary + 2 * kToneGap + kGroupGap, chromeY);
-  x += toneW + gap;
+  // Clouds: Density / Texture / Blend + power
+  clouds_.setTopLeftPosition(at(x), knobY(primary));
+  x += cloudsW + gap;
 
-  // Time FX (post-cab, so after the tone stack like the signal path)
+  // Time FX (post-cab, so after Clouds like the signal path)
   if (fxW > 0) {
     fx_.setTopLeftPosition(at(x), knobY(secondary));
     x += fxW + gap;

@@ -147,6 +147,37 @@ endif()
 # A2 full / A2 lite models use the hand-optimized path when config matches (see NeuralAmpModelerCore).
 target_compile_definitions(NAM PRIVATE NAM_ENABLE_A2_FAST)
 
+# Mutable Instruments Clouds DSP (vendored, MIT; see MutableClouds/README.md),
+# the engine behind CloudsFx. TEST selects the module's portable C++ paths
+# (no ARM assembly / STM32 headers); it stays private so it never reaches
+# GoogleTest's TEST() in the test suite. CloudsFx.cpp sets it around its own
+# include.
+set(CLOUDS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/MutableClouds")
+add_library(clouds STATIC
+    ${CLOUDS_SRC}/clouds/dsp/correlator.cc
+    ${CLOUDS_SRC}/clouds/dsp/granular_processor.cc
+    ${CLOUDS_SRC}/clouds/dsp/mu_law.cc
+    ${CLOUDS_SRC}/clouds/dsp/pvoc/frame_transformation.cc
+    ${CLOUDS_SRC}/clouds/dsp/pvoc/phase_vocoder.cc
+    ${CLOUDS_SRC}/clouds/dsp/pvoc/stft.cc
+    ${CLOUDS_SRC}/clouds/resources.cc
+    ${CLOUDS_SRC}/stmlib/dsp/atan.cc
+    ${CLOUDS_SRC}/stmlib/dsp/units.cc
+    ${CLOUDS_SRC}/stmlib/utils/random.cc
+)
+# SYSTEM: the module code is kept as published, so the plugin's strict
+# warning set (CloudsFx.cpp includes these headers) shouldn't flag it.
+target_include_directories(clouds SYSTEM PUBLIC ${CLOUDS_SRC})
+target_compile_definitions(clouds
+    PRIVATE TEST
+    # M_PI in stmlib's filters (also needed where CloudsFx.cpp includes them).
+    PUBLIC $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>)
+set_target_properties(clouds PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN TRUE)
+
 # macOS shows the icns verbatim (no system mask before Tahoe), so its artwork
 # bakes in Apple's icon grid: a rounded-rect chip with margins on a transparent
 # canvas. Windows wants the full-bleed square. Both derive from the t3k mark;
@@ -331,6 +362,8 @@ target_sources(${PROJECT_NAME}
         include/TimeFx.h
         include/InputCalibration.h
         src/TimeFx.cpp
+        include/CloudsFx.h
+        src/CloudsFx.cpp
         include/RigShare.h
         src/RigShare.cpp
         src/ProcessorRig.cpp
@@ -489,6 +522,7 @@ target_link_libraries(${PROJECT_NAME}
         # as a path); MSVC's linker accepts either prefix.
         $<$<PLATFORM_ID:Windows>:NAM>
         $<$<PLATFORM_ID:Windows>:-WHOLEARCHIVE:$<TARGET_FILE:NAM>>
+        clouds
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags

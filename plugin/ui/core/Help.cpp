@@ -110,10 +110,23 @@ std::map<Key, String> buildTable() {
   t[Key::fxReverbDecay] = knobDesktop("Decay", "reverb time (RT60), 0.2-10 s.");
   t[Key::fxReverbDamping] = knobDesktop("Damping", "how fast the highs die away in the tail.");
   t[Key::fxReverbMix] = knobDesktop("Mix", "reverb level; the dry signal stays at full level.");
-  t[Key::toneBass] = knobDesktop("Bass", "tone stack lows, 0-10: ±20 dB shelf, 150 Hz unless moved in the rig view.");
-  t[Key::toneMiddle] = knobDesktop("Middle", "tone stack mids, 0-10: ±15 dB bell, 425 Hz unless moved in the rig view.");
-  t[Key::toneTreble] = knobDesktop("Treble", "tone stack highs, 0-10: ±10 dB shelf, 1.8 kHz unless moved in the rig view.");
-  t[Key::tonePower] = U("Tone Stack Power: Bass/Middle/Treble on/off.");
+  t[Key::cloudsDensity] =
+      knobDesktop("Density", "grain rate; noon is silent. Right: random, left: steady. Right-click: advanced.");
+  t[Key::cloudsTexture] =
+      knobDesktop("Texture", "grain shape, from hard square to smooth; the top adds diffusion. Filter in delay modes.");
+  t[Key::cloudsBlend] = knobDesktop("Blend", "dry/wet. Alt-click: reset all of Clouds.");
+  t[Key::cloudsPower] = kTouch ? U("Clouds Power: granular texture on/off.")
+                               : U("Clouds Power: granular texture on/off. Right-click: advanced.");
+  t[Key::cloudsFreeze] = U("FREEZE: stop recording and keep playing what's in the buffer.");
+  t[Key::cloudsMode] = U("Mode: Granular, Stretch, Looping Delay or Spectral. Click: next mode.");
+  t[Key::cloudsQuality] =
+      U("Quality: 16/8-bit, stereo/mono. Lower buys a longer buffer (1-8 s). Click: next; clears the buffer.");
+  t[Key::cloudsPosition] = knobDesktop("Position", "where in the buffer grains start (delay time in Looping Delay).");
+  t[Key::cloudsSize] = knobDesktop("Size", "grain length; window size in Stretch and Looping Delay.");
+  t[Key::cloudsPitch] = knobDesktop("Pitch", "grain transposition, ±24 semitones.");
+  t[Key::cloudsSpread] = knobDesktop("Spread", "how far grains scatter across the stereo field.");
+  t[Key::cloudsFeedback] = knobDesktop("Feedback", "output fed back into the buffer. High: endless smear.");
+  t[Key::cloudsReverb] = knobDesktop("Reverb", "Clouds' own reverb on the wet signal.");
   t[Key::spreadOffset] =
       knobDesktop("Offset", "double-track lag, ≤24 ms toward L or R. Center: off. Right-click: advanced.");
   t[Key::spreadWobble] = knobDesktop("Wobble", "humanizing delay drift, up to ±1.2 ms.");

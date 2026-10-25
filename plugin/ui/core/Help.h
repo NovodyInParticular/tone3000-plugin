@@ -15,7 +15,8 @@ enum class Key {
   // Faceplate: gate, pitch shift, tone stack, stereo image (spread / align)
   gate, gatePower, gateRelease, gateHold, gateRange,
   pitch, pitchPower, pitchStep, pitchTonality, pitchWindow,
-  toneBass, toneMiddle, toneTreble, tonePower,
+  cloudsDensity, cloudsTexture, cloudsBlend, cloudsPower, cloudsFreeze, cloudsMode, cloudsQuality,
+  cloudsPosition, cloudsSize, cloudsPitch, cloudsSpread, cloudsFeedback, cloudsReverb,
   spreadOffset, spreadWobble, spreadWobblePower, spreadCrossover, spreadCrossoverPower,
   spreadDiffuse, spreadAdvert, spreadPower, imageCorrelation, spreadMonoOutput, spreadDualMono,
   alignOffset, alignWobble, alignWobblePower, alignCrossover, alignCrossoverPower,

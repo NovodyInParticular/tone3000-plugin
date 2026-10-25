@@ -203,7 +203,8 @@ flowchart LR
     IMAGE --> PAN["Balance + Pan *\n(per-chain trim, then\nconstant-power blend)"]
     PAN --> DCB["DC Blocker\n(~5 Hz HPF)"]
     DCB --> TS["Tone Stack *"]
-    TS --> OG["Output Level"]
+    TS --> CLOUDS["Clouds *"]
+    CLOUDS --> OG["Output Level"]
     OG --> OUT([Out])
 ```
 
@@ -297,7 +298,14 @@ flowchart LR
 - **Tone stack**: one global Bass/Middle/Treble EQ after the DC blocker,
   voiced to match the reference
   [NeuralAmpModelerPlugin](https://github.com/sdatkinson/NeuralAmpModelerPlugin)
-  tone stack (150 Hz / 425 Hz / 1.8 kHz, ±20 / ±15 / ±10 dB).
+  tone stack (150 Hz / 425 Hz / 1.8 kHz, ±20 / ±15 / ±10 dB). Edited on the
+  rig view's EQ curve (drag a handle: up/down for gain, sideways for frequency).
+- **Clouds**: Mutable Instruments' granular texture processor after the tone
+  stack, running the module's own DSP (Granular, Stretch, Looping Delay and
+  Spectral modes, freeze, feedback, reverb). The faceplate has Density,
+  Texture and Blend plus a power switch; right-click the group for the rest.
+  The engine runs at the module's 32 kHz on the wet path only, so the dry
+  signal gets no added latency.
 - **Oversampling**: a Plugin Settings option runs the whole chain at 2x/4x/8x the
   48 kHz base rate: minimum-phase half-band filters (zero added latency),
   with NAM models phase-interleaved across N native-rate instances so
@@ -460,6 +468,9 @@ source). The CLAP build uses **clap-juce-extensions** and the **CLAP** SDK
 - [NeuralAmpModelerPlugin](https://github.com/sdatkinson/NeuralAmpModelerPlugin):
   the reference NAM plugin; the faceplate tone stack borrows its band voicing
   and the DC blocker matches its behavior.
+- [Mutable Instruments Clouds](https://pichenettes.github.io/mutable-instruments-documentation/modules/clouds/)
+  by Emilie Gillet: the Clouds effect runs the module's open-source DSP (MIT),
+  vendored in [`plugin/MutableClouds`](plugin/MutableClouds).
 - [AudioDSPTools](https://github.com/sdatkinson/AudioDSPTools): resampling
   around the 48 kHz chain boundary, with `ResamplingContainer` from
   [iPlug2](https://github.com/iPlug2/iPlug2).

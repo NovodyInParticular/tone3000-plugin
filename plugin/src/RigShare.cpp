@@ -60,7 +60,9 @@ bool allowedParam(const juce::String& id) {
       "fxDelayDivision", "fxDelayFeedback", "fxDelayMix",      "fxDelayPingPong", "fxDelayDamping",
       "fxReverbEnabled", "fxReverbSize",    "fxReverbDecay",   "fxReverbDamping", "fxReverbMix",
       "fxModEnabled",   "fxModType",        "fxModRate",       "fxModDepth",      "fxModMix",
-      "fxOrder"};
+      "fxOrder",        "cloudsEnabled",    "cloudsMode",      "cloudsQuality",   "cloudsFreeze",
+      "cloudsPosition", "cloudsSize",       "cloudsPitch",     "cloudsDensity",   "cloudsTexture",
+      "cloudsBlend",    "cloudsSpread",     "cloudsFeedback",  "cloudsReverb"};
   return ids.contains(id);
 }
 

@@ -23,6 +23,7 @@ target_sources(DspTests PRIVATE
     src/tone_step_tests.cpp
     src/dual_ir_tests.cpp
     src/time_fx_tests.cpp
+    src/clouds_fx_tests.cpp
     src/input_calibration_tests.cpp
     src/rig_share_tests.cpp
     src/output_spectrum_tests.cpp
@@ -77,6 +78,7 @@ target_sources(DspTests PRIVATE
     ../plugin/src/ProcessorState.cpp
     ../plugin/src/Spread.cpp
     ../plugin/src/TimeFx.cpp
+    ../plugin/src/CloudsFx.cpp
     ../plugin/src/RigShare.cpp
     ../plugin/src/ProcessorRig.cpp
     # Processor.cpp's constructor calls StandaloneStateAutosave::install().
@@ -137,6 +139,7 @@ target_link_libraries(DspTests
         $<$<PLATFORM_ID:Linux>:-Wl,--no-whole-archive>
         $<$<PLATFORM_ID:Windows>:NAM>
         $<$<PLATFORM_ID:Windows>:-WHOLEARCHIVE:$<TARGET_FILE:NAM>>
+        clouds
         # dsp_tests.cpp provides main() (JUCE init + InitGoogleTest).
         GTest::gtest
     PUBLIC
