@@ -1,5 +1,12 @@
 # TONE3000 Plugin
 
+> **Custom build.** This fork adds Clouds (Mutable Instruments' granular
+> effect), a Time FX rack, dual cab IRs, a Rig view with a live spectrum,
+> rig sharing, skins, previous/next tone stepping and more on top of the
+> official v0.0.12. See **[What's different](CUSTOM-CHANGES.md)**, and get
+> installers from [Releases](https://github.com/NovodyInParticular/tone3000-plugin/releases).
+> Not affiliated with TONE3000.
+
 A JUCE-based audio plugin (VST3, AU, CLAP, LV2, Standalone) that loads
 **Neural Amp Modeler (NAM)** captures and **impulse responses (IRs)** straight
 from [TONE3000](https://www.tone3000.com). No manual file downloads: browse
