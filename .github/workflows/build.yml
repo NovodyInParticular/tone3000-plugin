@@ -204,8 +204,12 @@ jobs:
         if: matrix.os == 'linux'
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 2
 
+      # A cold Windows build takes ~30 min. On 2026-10-25 one run stalled in
+      # the LV2 target's post-build step (juce_lv2_helper) for 4+ hours and
+      # didn't reproduce in 150 reruns; cap the step so a stall fails fast.
       - name: Build plugin (Windows)
         if: matrix.os == 'windows'
+        timeout-minutes: 60
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
 
       # Sequential per-arch builds (shared runner RAM). Each arch is a distinct
