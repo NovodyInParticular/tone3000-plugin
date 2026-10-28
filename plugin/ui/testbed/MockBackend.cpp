@@ -71,6 +71,14 @@ constexpr SliderDefault kSliders[] = {
     {"glitchChance", 0.0f},      {"glitchIntensity", 0.5f}, {"glitchSeed", 0.0f},
     {"glitchFreezeFade", 0.5677f}, {"glitchFreezeMode", 0.0f}, {"glitchStutterMode", 0.0f},
     {"glitchPlacement", 1.0f},   {"standaloneBpm", 0.3077f},
+    // Abyss Pitch at the processor defaults (-1 oct at 70 %, 0 st, centred
+    // bend, 80 ms glide, Tight, pre-amp, Abyss first).
+    {"abyssSubTwo", 0.0f},       {"abyssSubOne", 0.7f},     {"abyssUp", 0.0f},
+    {"abyssShiftLevel", 0.0f},   {"abyssShift", 0.5f},      {"abyssInterval", 0.0f},
+    {"abyssDetune", 0.0f},       {"abyssBend", 0.5f},       {"abyssBendRange", 0.0f},
+    {"abyssGlide", 0.2759f},     {"abyssTracking", 0.0f},   {"abyssDry", 1.0f},
+    {"abyssWet", 1.0f},          {"abyssOutput", 0.6667f},  {"abyssPlacement", 0.0f},
+    {"insertOrder", 0.0f},
 };
 struct ToggleDefault {
   const char* id;
@@ -93,7 +101,7 @@ constexpr ToggleDefault kToggles[] = {
     {"inputCalEnabled", false},
     {"cloudsEnabled", false},          {"cloudsFreeze", false},
     {"glitchEnabled", false},          {"glitchStutter", false},
-    {"glitchFreeze", false},
+    {"glitchFreeze", false},           {"abyssEnabled", false},
 };
 
 }  // namespace

@@ -31,6 +31,7 @@
 #include "TimeFx.h"
 #include "CloudsFx.h"
 #include "GlitchFx.h"
+#include "AbyssPitch.h"
 #include "InputCalibration.h"
 #include "RigShare.h"
 #include <set>
@@ -43,6 +44,8 @@
 // Where an insert effect (Glitch Engine, Abyss Pitch) runs: before the
 // chain (into the amps) or after it (after Clouds, before the time FX).
 inline constexpr std::array<const char*, 2> kInsertPlacementNames = {"Pre-amp", "Post-amp"};
+// Which insert runs first when both share a placement.
+inline constexpr std::array<const char*, 2> kInsertOrderNames = {"Abyss > Glitch", "Glitch > Abyss"};
 
 class TONE3000Processor;
 
@@ -1354,10 +1357,28 @@ private:
     std::atomic<float>* glitchFreezeFade = nullptr;
     std::atomic<float>* glitchPlacement = nullptr;
     std::atomic<float>* standaloneBpm = nullptr;
+    std::atomic<float>* abyssEnabled = nullptr;
+    std::atomic<float>* abyssSubTwo = nullptr;
+    std::atomic<float>* abyssSubOne = nullptr;
+    std::atomic<float>* abyssUp = nullptr;
+    std::atomic<float>* abyssShiftLevel = nullptr;
+    std::atomic<float>* abyssShift = nullptr;
+    std::atomic<float>* abyssInterval = nullptr;
+    std::atomic<float>* abyssDetune = nullptr;
+    std::atomic<float>* abyssBend = nullptr;
+    std::atomic<float>* abyssBendRange = nullptr;
+    std::atomic<float>* abyssGlide = nullptr;
+    std::atomic<float>* abyssTracking = nullptr;
+    std::atomic<float>* abyssDry = nullptr;
+    std::atomic<float>* abyssWet = nullptr;
+    std::atomic<float>* abyssOutput = nullptr;
+    std::atomic<float>* abyssPlacement = nullptr;
+    std::atomic<float>* insertOrder = nullptr;
   } paramRefs;
   timefx::Params timeFxParamsFromRefs() const;
   cloudsfx::Params cloudsParamsFromRefs() const;
   glitchfx::Params glitchParamsFromRefs() const;
+  abyss::Params abyssParamsFromRefs() const;
   void resolveParamRefs();
 
   /** The oversampling factor the osEnabled/osFactor parameters currently
@@ -1442,10 +1463,15 @@ private:
   cloudsfx::Params cacheClouds;
   glitchfx::Params cacheGlitch;
   bool cacheGlitchPre = false;  // placement: before the chain
-  // The placement the audio thread is running. A change dips the output
-  // through insertMoveGain, moves the insert at the bottom of the dip and
-  // comes back, so moving a sounding effect never clicks.
-  bool rtGlitchPre = false;
+  abyss::Params cacheAbyss;
+  bool cacheAbyssPre = true;
+  bool cacheGlitchFirst = false;  // insertOrder: Glitch before Abyss when they share a side
+  // The placements and order the audio thread is running. A change dips
+  // the output through insertMoveGain, moves the inserts at the bottom of
+  // the dip and comes back, so moving a sounding effect never clicks.
+  bool rtGlitchPre = false, rtAbyssPre = true, rtGlitchFirst = false;
+  // Runs the insert effects placed on one side of the chain, in order.
+  void processInserts(juce::AudioBuffer<float>& buffer, bool pre, const glitchfx::Transport& transport);
   static constexpr double kInsertMoveSeconds = 0.012;
   juce::LinearSmoothedValue<float> insertMoveGain{1.0f};
   void updateInsertPlacement();
@@ -1467,6 +1493,9 @@ private:
   // Glitch Engine (see GlitchFx.h): after Clouds by default, or before the
   // chain (glitchPlacement).
   glitchfx::Engine glitchFx;
+  // Abyss Pitch (see AbyssPitch.h): before the chain by default
+  // (abyssPlacement), so octaves drive the amps.
+  abyss::Engine abyssFx;
   // The plugin's output for the rig view's analyser, addressed through the
   // block spectrum API as kOutputSpectrumId.
   BlockSpectrum outputSpectrum;

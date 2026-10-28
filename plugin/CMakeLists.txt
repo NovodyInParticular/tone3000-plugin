@@ -366,6 +366,8 @@ target_sources(${PROJECT_NAME}
         src/CloudsFx.cpp
         include/GlitchFx.h
         src/GlitchFx.cpp
+        include/AbyssPitch.h
+        src/AbyssPitch.cpp
         include/RigShare.h
         src/RigShare.cpp
         src/ProcessorRig.cpp

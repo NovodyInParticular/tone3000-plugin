@@ -47,6 +47,25 @@ void pill(juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text,
   }
 }
 
+void insertSwitch(juce::Graphics& g, juce::Rectangle<float> box, bool on) {
+  const auto fs = insertFootswitch(box);
+  if (on) {
+    if (theme::kStyle.glow > 0.0f) {
+      g.setColour(theme::kBrandYellow.withAlpha(0.22f * theme::kStyle.glow));
+      g.fillEllipse(fs.expanded(6.0f));
+    }
+    g.setColour(theme::kGray.withAlpha(0.75f));
+    g.fillEllipse(fs);
+    g.setColour(theme::kBrandYellow);
+    g.drawEllipse(fs.reduced(0.75f), 2.0f);
+  } else {
+    g.setColour(theme::kGray.withAlpha(0.3f));
+    g.fillEllipse(fs);
+    g.setColour(theme::kBorder);
+    g.drawEllipse(fs, 1.5f);
+  }
+}
+
 }  // namespace
 
 juce::Rectangle<float> glitchScreen(juce::Rectangle<float> box) {
@@ -147,23 +166,79 @@ void drawGlitch(juce::Graphics& g, juce::Rectangle<float> box, const GlitchLook&
   g.drawText(look.pre ? "PRE-AMP" : "POST-AMP", juce::Rectangle<float>(box.getX(), box.getY() + 112, box.getWidth(), 12),
              juce::Justification::centred, false);
 
-  // Footswitch: power.
-  const auto fs = insertFootswitch(box);
-  if (look.on) {
-    if (theme::kStyle.glow > 0.0f) {
-      g.setColour(theme::kBrandYellow.withAlpha(0.22f * theme::kStyle.glow));
-      g.fillEllipse(fs.expanded(6.0f));
+  insertSwitch(g, box, look.on);
+}
+
+void drawAbyss(juce::Graphics& g, juce::Rectangle<float> box, const AbyssLook& look) {
+  insertLed(g, {box.getX() + 12, box.getY() + 14}, look.on);
+  g.setColour(look.on ? theme::kWhite : theme::kGray);
+  g.setFont(label(12, true));
+  g.drawText("ABYSS", box.withHeight(28).withTrimmedLeft(16), juce::Justification::centred, false);
+
+  // The screen: one line per layer at its pitch (up high, octaves down
+  // low), lit by its level and its live output; the bend moves them all,
+  // detune splits each into two strands. The dry pitch is a faint guide.
+  const auto screen = abyssScreen(box);
+  g.setColour(theme::kBlack.withAlpha(0.55f));
+  g.fillRoundedRectangle(screen, 4.0f);
+  {
+  juce::Graphics::ScopedSaveState save(g);
+  g.reduceClipRegion(screen.reduced(1.0f).toNearestInt());
+  const auto pic = screen.reduced(4, 6);
+  const float perSemitone = pic.getHeight() * 0.5f / 30.0f;
+  const auto yOf = [&](float semitones) { return pic.getCentreY() - semitones * perSemitone; };
+  g.setColour(theme::kGray.withAlpha(0.35f));
+  g.drawHorizontalLine(juce::roundToInt(yOf(0.0f)), pic.getX(), pic.getRight());
+
+  struct Layer {
+    float semitones, setting, live;
+    const char* name;
+  };
+  const Layer layers[] = {
+      {-24.0f, look.subTwo, look.activity[0], "-2"},
+      {-12.0f, look.subOne, look.activity[1], "-1"},
+      {12.0f, look.up, look.activity[2], "+1"},
+      {look.shiftSemitones, look.shift, std::max(look.activity[3], look.activity[4]), "S"},
+  };
+  const auto colour = look.on ? theme::kBrandYellow : theme::kGray.withAlpha(0.45f);
+  const float split = juce::jlimit(0.0f, 1.0f, look.detuneCents / 100.0f) * 4.0f;
+  for (const auto& layer : layers) {
+    if (layer.setting <= 0.001f) continue;
+    const float y = yOf(layer.semitones + look.bend);
+    const float bright = look.on ? juce::jlimit(0.2f, 1.0f, 0.3f + 0.4f * layer.setting + 1.2f * layer.live) : 0.3f;
+    for (int strand = 0; strand < (split > 0.2f ? 2 : 1); ++strand) {
+      const float offset = strand == 0 ? -split * 0.5f : split * 0.5f;
+      juce::Path line;
+      for (int i = 0; i <= 32; ++i) {
+        const float u = static_cast<float>(i) / 32.0f;
+        // A slow ripple, faster for higher layers.
+        const float rate = 1.0f + layer.semitones / 24.0f;
+        const float wobble = std::sin((u * 3.0f + look.time * rate * (strand == 0 ? 1.0f : 1.3f)) *
+                                      juce::MathConstants<float>::twoPi) *
+                             (0.8f + 2.0f * layer.live);
+        const float x = pic.getX() + 10 + u * (pic.getWidth() - 10);
+        if (i == 0) line.startNewSubPath(x, y + offset + wobble);
+        else line.lineTo(x, y + offset + wobble);
+      }
+      if (look.on && theme::kStyle.glow > 0.0f) {
+        g.setColour(colour.withAlpha(0.25f * bright * theme::kStyle.glow));
+        g.strokePath(line, juce::PathStrokeType(4.0f + 3.0f * layer.live));
+      }
+      g.setColour(colour.withAlpha(bright));
+      g.strokePath(line, juce::PathStrokeType(1.2f + layer.setting));
     }
-    g.setColour(theme::kGray.withAlpha(0.75f));
-    g.fillEllipse(fs);
-    g.setColour(theme::kBrandYellow);
-    g.drawEllipse(fs.reduced(0.75f), 2.0f);
-  } else {
-    g.setColour(theme::kGray.withAlpha(0.3f));
-    g.fillEllipse(fs);
-    g.setColour(theme::kBorder);
-    g.drawEllipse(fs, 1.5f);
+    g.setColour(theme::kSubtle);
+    g.setFont(label(8));
+    g.drawText(layer.name, juce::Rectangle<float>(pic.getX(), y - 5, 12, 10), juce::Justification::centredLeft, false);
   }
+  }
+
+  g.setColour(theme::kSubtle);
+  g.setFont(label(9));
+  g.drawText(juce::String(look.pre ? "PRE-AMP" : "POST-AMP") + juce::String::fromUTF8(look.smooth ? " \u00b7 SMOOTH" : " \u00b7 TIGHT"),
+             juce::Rectangle<float>(box.getX(), box.getY() + 108, box.getWidth(), 12), juce::Justification::centred,
+             false);
+  insertSwitch(g, box, look.on);
 }
 
 }  // namespace t3k::ui::rigface

@@ -25,6 +25,20 @@ struct GlitchLook {
   float time = 0.0f;         // animation clock, s (0 on static skins)
 };
 
+struct AbyssLook {
+  bool on = false;
+  bool pre = true;
+  bool smooth = false;  // Smooth tracking
+  // Layer settings (levels 0..1): -2, -1, +1 octave, shift.
+  float subTwo = 0, subOne = 0, up = 0, shift = 0;
+  float shiftSemitones = 0;  // the shift layer's interval
+  float detuneCents = 0;
+  float bend = 0;        // glided bend, semitones (activity)
+  float activity[5] = {};  // each voice's output peak (activity)
+  float input = 0;         // input peak (activity)
+  float time = 0;          // animation clock, s (0 on static skins)
+};
+
 // The card's pieces, in nominal units inside `box` (the card minus its
 // 1-unit margin): STUTTER / FREEZE pills (0 / 1) and the footswitch.
 juce::Rectangle<float> glitchPill(juce::Rectangle<float> box, int which);
@@ -33,5 +47,9 @@ juce::Rectangle<float> insertFootswitch(juce::Rectangle<float> box);
 juce::Rectangle<float> glitchScreen(juce::Rectangle<float> box);
 
 void drawGlitch(juce::Graphics& g, juce::Rectangle<float> box, const GlitchLook& look);
+
+// Abyss shares the glitch card's screen area.
+inline juce::Rectangle<float> abyssScreen(juce::Rectangle<float> box) { return glitchScreen(box).withHeight(74); }
+void drawAbyss(juce::Graphics& g, juce::Rectangle<float> box, const AbyssLook& look);
 
 }  // namespace t3k::ui::rigface

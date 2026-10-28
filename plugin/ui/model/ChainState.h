@@ -206,6 +206,12 @@ struct MeterLevels {
     bool stutter = false;
     float crush = 0;
   } glitch;
+  struct Abyss {
+    float levels[5] = {};  // per voice: -2, -1, +1 octave, shift A / B (abyss::Voice)
+    float bend = 0;        // semitones
+    float detune = 0;      // cents
+    float input = 0;
+  } abyss;
 
   static MeterLevels parse(const juce::var& v);
 };

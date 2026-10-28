@@ -291,6 +291,26 @@ inline const KnobScale& tempoBpm() {
   return s;
 }
 
+// Abyss Pitch (AbyssPitch.h / Processor.cpp ranges).
+inline const KnobScale& abyssShift() {
+  static const KnobScale s = linear(-12, 12, "st", 2);
+  return s;
+}
+inline const KnobScale& abyssDetune() {
+  static const KnobScale s = linear(0, 100, "ct", 0);
+  return s;
+}
+inline const KnobScale& abyssBend() {
+  static const KnobScale s = linear(-100, 100, "%", 0);
+  return s;
+}
+// 0..2000 ms with the processor's 0.4 skew (fine control at short glides).
+inline const KnobScale& abyssGlideMs() {
+  static const KnobScale s = make([](double n) { return 2000.0 * std::pow(n, 2.5); },
+                                  [](double d) { return std::pow(std::max(0.0, d) / 2000.0, 0.4); }, "ms", 0);
+  return s;
+}
+
 // Faceplate tone stack knobs: 0..10, 5 = flat.
 inline const KnobScale& tone() {
   static const KnobScale s = linear(0, 10, {}, 1);

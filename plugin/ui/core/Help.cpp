@@ -147,6 +147,28 @@ std::map<Key, String> buildTable() {
   t[Key::glitchFreezeFade] = knobDesktop("Fade", "how slowly FREEZE swells in and dies away.");
   t[Key::glitchMix] = knobDesktop("Mix", "dry/wet.");
   t[Key::glitchOutput] = knobDesktop("Output", "level after the Glitch Engine, -24 to +12 dB.");
+  t[Key::abyssCard] = U("Abyss Pitch: octave layers, detune, bend and dissonant shifts. Click: controls · drag: "
+                        "move before or after the amps.");
+  t[Key::abyssPower] = U("Abyss Pitch on/off.");
+  t[Key::abyssTracking] = U("Tracking: TIGHT (11 ms, best feel and chords) or SMOOTH (21 ms, fewer artefacts on long "
+                            "notes). Click: switch.");
+  t[Key::abyssInterval] = U("Interval for the Shift layer: FREE uses the Shift knob, or pick tritone, minor 2nd and "
+                            "friends. Click: next.");
+  t[Key::abyssBendRange] = U("Bend range: ±12 or ±24 semitones. Click: switch.");
+  t[Key::abyssPlacement] = U("Where Abyss Pitch runs: before the amps (octaves into the amp) or after the cab. "
+                             "Click: switch.");
+  t[Key::insertOrder] = U("Which insert runs first when Abyss and Glitch share a side. Click: switch.");
+  t[Key::abyssSubTwo] = knobDesktop("-2 Oct", "two octaves down.");
+  t[Key::abyssSubOne] = knobDesktop("-1 Oct", "one octave down.");
+  t[Key::abyssUp] = knobDesktop("+1 Oct", "one octave up.");
+  t[Key::abyssShiftLevel] = knobDesktop("Shift Lvl", "level of the shifted layer (Shift or the interval).");
+  t[Key::abyssShift] = knobDesktop("Shift", "free shift, ±12 semitones, used when the interval is FREE.");
+  t[Key::abyssDetune] = knobDesktop("Detune", "spreads the layers apart: a few cents shimmer, 50+ is a wide chorus.");
+  t[Key::abyssBend] = knobDesktop("Bend", "bends every layer up or down by the range; map it to an expression pedal.");
+  t[Key::abyssGlide] = knobDesktop("Glide", "how long the bend takes to reach a new position.");
+  t[Key::abyssDry] = knobDesktop("Dry", "the unshifted signal's level.");
+  t[Key::abyssWet] = knobDesktop("Wet", "all the shifted layers together.");
+  t[Key::abyssOutput] = knobDesktop("Output", "level after Abyss Pitch, -24 to +12 dB.");
   t[Key::standaloneBpm] =
       knobDesktop("Tempo", "the tempo synced effects follow when there is no host tempo (the standalone app).");
   t[Key::spreadOffset] =

@@ -25,6 +25,7 @@ target_sources(DspTests PRIVATE
     src/time_fx_tests.cpp
     src/clouds_fx_tests.cpp
     src/glitch_fx_tests.cpp
+    src/abyss_pitch_tests.cpp
     src/input_calibration_tests.cpp
     src/rig_share_tests.cpp
     src/output_spectrum_tests.cpp
@@ -81,6 +82,7 @@ target_sources(DspTests PRIVATE
     ../plugin/src/TimeFx.cpp
     ../plugin/src/CloudsFx.cpp
     ../plugin/src/GlitchFx.cpp
+    ../plugin/src/AbyssPitch.cpp
     ../plugin/src/RigShare.cpp
     ../plugin/src/ProcessorRig.cpp
     # Processor.cpp's constructor calls StandaloneStateAutosave::install().

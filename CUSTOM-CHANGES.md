@@ -41,6 +41,17 @@ The source is on the [`custom`](https://github.com/NovodyInParticular/tone3000-p
   footswitches). Glitches can never come out much louder than what you
   played. No latency. Off by default. The standalone app has its own tempo
   (in the Glitch controls) for everything tempo-synced.
+- **Abyss Pitch.** A layered pitch effect with its own rig-view card: -1 and
+  -2 octave and +1 octave layers with their own levels, a shift layer (free
+  ±12 semitones or a dissonant interval: minor 2nd, tritone, major 7th,
+  minor 9th), detune from a shimmer to a wide chorus, a pitch bend (±12 or
+  ±24, with glide; map it to an expression pedal), dry, wet and output.
+  Tracking: Tight (11 ms latency, best for chords and feel) or Smooth
+  (21 ms). It uses the same low-latency engine as the Pitch knob, and the
+  latency is reported to the host only while it is on. Before the amps by
+  default (octaves into the amp); drag the card after the cab for octaves
+  on the amp's sound. When both inserts share a side, drag them past each
+  other to change which runs first. Off by default.
 - **Time FX rack** after the cab: chorus / flanger, delay (tempo sync,
   ping-pong, damping) and reverb, in any of six orders. Effects ring out
   when switched off.

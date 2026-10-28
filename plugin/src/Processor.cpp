@@ -221,6 +221,23 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.glitchFreezeFade = get("glitchFreezeFade");
   paramRefs.glitchPlacement = get("glitchPlacement");
   paramRefs.standaloneBpm = get("standaloneBpm");
+  paramRefs.abyssEnabled = get("abyssEnabled");
+  paramRefs.abyssSubTwo = get("abyssSubTwo");
+  paramRefs.abyssSubOne = get("abyssSubOne");
+  paramRefs.abyssUp = get("abyssUp");
+  paramRefs.abyssShiftLevel = get("abyssShiftLevel");
+  paramRefs.abyssShift = get("abyssShift");
+  paramRefs.abyssInterval = get("abyssInterval");
+  paramRefs.abyssDetune = get("abyssDetune");
+  paramRefs.abyssBend = get("abyssBend");
+  paramRefs.abyssBendRange = get("abyssBendRange");
+  paramRefs.abyssGlide = get("abyssGlide");
+  paramRefs.abyssTracking = get("abyssTracking");
+  paramRefs.abyssDry = get("abyssDry");
+  paramRefs.abyssWet = get("abyssWet");
+  paramRefs.abyssOutput = get("abyssOutput");
+  paramRefs.abyssPlacement = get("abyssPlacement");
+  paramRefs.insertOrder = get("insertOrder");
 }
 
 // The time-FX rack's settings, decoded from the parameter atomics. Safe on
@@ -289,6 +306,28 @@ glitchfx::Params TONE3000Processor::glitchParamsFromRefs() const {
   p.seed = static_cast<int>(std::lround(paramRefs.glitchSeed->load()));
   p.freeze = paramRefs.glitchFreeze->load() > 0.5f;
   p.freezeFadeMs = paramRefs.glitchFreezeFade->load();
+  return p;
+}
+
+// Abyss Pitch's settings; same threading as above.
+abyss::Params TONE3000Processor::abyssParamsFromRefs() const {
+  abyss::Params p;
+  p.on = paramRefs.abyssEnabled->load() > 0.5f;
+  p.subTwoLevel = paramRefs.abyssSubTwo->load();
+  p.subOneLevel = paramRefs.abyssSubOne->load();
+  p.upLevel = paramRefs.abyssUp->load();
+  p.shiftLevel = paramRefs.abyssShiftLevel->load();
+  p.shiftSemitones = paramRefs.abyssShift->load();
+  p.interval = static_cast<int>(std::lround(paramRefs.abyssInterval->load()));
+  p.detuneCents = paramRefs.abyssDetune->load();
+  p.bend = paramRefs.abyssBend->load();
+  p.bendRange = static_cast<int>(std::lround(paramRefs.abyssBendRange->load()));
+  p.glideMs = paramRefs.abyssGlide->load();
+  p.tracking = static_cast<int>(std::lround(paramRefs.abyssTracking->load()));
+  p.dry = paramRefs.abyssDry->load();
+  p.wet = paramRefs.abyssWet->load();
+  p.outputDb = paramRefs.abyssOutput->load();
+  p.stereoSpread = std::lround(paramRefs.abyssPlacement->load()) == 1;
   return p;
 }
 
@@ -648,6 +687,52 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
       juce::NormalisableRange<float>(40.0f, 300.0f, 0.1f), 120.0f,
       juce::AudioParameterFloatAttributes().withLabel("BPM").withAutomatable(false)));
 
+  // Abyss Pitch (see AbyssPitch.h). Off by default. Layer levels are 0..1
+  // gains; Tracking and Placement don't automate (Tracking changes the
+  // reported latency, Placement moves the insert).
+  juce::StringArray intervals, bendRanges, trackings, orders2;
+  for (const auto* name : abyss::kIntervalNames) intervals.add(name);
+  for (const auto* name : abyss::kBendRangeNames) bendRanges.add(name);
+  for (const auto* name : abyss::kTrackingNames) trackings.add(name);
+  for (const auto* name : kInsertOrderNames) orders2.add(name);
+  layout.add(boolParam("abyssEnabled", 98, false));
+  layout.add(normParam("abyssSubTwo", 99, 0.0f));
+  layout.add(normParam("abyssSubOne", 100, 0.7f));
+  layout.add(normParam("abyssUp", 101, 0.0f));
+  layout.add(normParam("abyssShiftLevel", 102, 0.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"abyssShift", 103}, "abyssShift",
+      juce::NormalisableRange<float>(-abyss::kShiftRange, abyss::kShiftRange, 0.01f), 0.0f,
+      juce::AudioParameterFloatAttributes().withLabel("st")));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"abyssInterval", 104}, "abyssInterval", intervals, 0));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"abyssDetune", 105}, "abyssDetune",
+      juce::NormalisableRange<float>(0.0f, abyss::kMaxDetuneCents, 0.01f), 0.0f,
+      juce::AudioParameterFloatAttributes().withLabel("ct")));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"abyssBend", 106}, "abyssBend", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.0001f), 0.0f));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"abyssBendRange", 107}, "abyssBendRange", bendRanges, 0));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"abyssGlide", 108}, "abyssGlide",
+      juce::NormalisableRange<float>(0.0f, abyss::kMaxGlideMs, 0.1f, 0.4f), 80.0f, wholeUnitText("ms")));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"abyssTracking", 109}, "abyssTracking", trackings, 0,
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+  layout.add(normParam("abyssDry", 110, 1.0f));
+  layout.add(normParam("abyssWet", 111, 1.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"abyssOutput", 112}, "abyssOutput",
+      juce::NormalisableRange<float>(-24.0f, 12.0f, 0.01f), 0.0f,
+      juce::AudioParameterFloatAttributes().withLabel("dB")));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"abyssPlacement", 113}, "abyssPlacement", placements, 0,
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"insertOrder", 114}, "insertOrder", orders2, 0,
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+
   return layout;
 }
 
@@ -668,7 +753,8 @@ void TONE3000Processor::parameterChanged(const juce::String& parameterID, float 
     triggerAsyncUpdate();
     return;
   }
-  if (parameterID == "pitchEnabled" || parameterID == "pitchWindow") {
+  if (parameterID == "pitchEnabled" || parameterID == "pitchWindow" || parameterID == "abyssEnabled" ||
+      parameterID == "abyssTracking") {
     // The only runtime latency edges. Hosts want latency changes off the
     // audio thread (VST3 restarts the component), so they ride the same
     // deferral as the oversampling settings; updateLatency() there is
@@ -701,6 +787,8 @@ void TONE3000Processor::updateLatency() {
         PitchShift::windowFromIndex(static_cast<int>(std::lround(paramRefs.pitchWindow->load())));
     latency += PitchShift::latencySamples(window, hostSampleRate);
   }
+  if (paramRefs.abyssEnabled->load() >= 0.5f)
+    latency += abyss::latencySamples(static_cast<int>(std::lround(paramRefs.abyssTracking->load())), hostSampleRate);
   setLatencySamples(latency);  // no-op (no host notification) when unchanged
 }
 
@@ -1234,9 +1322,12 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   timeFx.prepare(sampleRate, samplesPerBlock);
   cloudsFx.prepare(sampleRate, samplesPerBlock);
   glitchFx.prepare(sampleRate, samplesPerBlock);
+  abyssFx.prepare(sampleRate, samplesPerBlock);
   insertMoveGain.reset(sampleRate, kInsertMoveSeconds);
   insertMoveGain.setCurrentAndTargetValue(1.0f);
   rtGlitchPre = cacheGlitchPre;
+  rtAbyssPre = cacheAbyssPre;
+  rtGlitchFirst = cacheGlitchFirst;
   outputSpectrum.prepare(sampleRate);
   inputSpectrum.prepare(sampleRate);
 
@@ -1338,6 +1429,7 @@ void TONE3000Processor::releaseResources() {
   timeFx.reset();
   cloudsFx.reset();
   glitchFx.reset();
+  abyssFx.reset();
 }
 
 bool TONE3000Processor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -1481,6 +1573,9 @@ void TONE3000Processor::updateCachedParameters() {
   cacheClouds = cloudsParamsFromRefs();
   cacheGlitch = glitchParamsFromRefs();
   cacheGlitchPre = std::lround(paramRefs.glitchPlacement->load()) == 0;
+  cacheAbyss = abyssParamsFromRefs();
+  cacheAbyssPre = std::lround(paramRefs.abyssPlacement->load()) == 0;
+  cacheGlitchFirst = std::lround(paramRefs.insertOrder->load()) == 1;
   cacheInputCalGain = paramRefs.inputCalEnabled->load() > 0.5f
                           ? juce::Decibels::decibelsToGain(paramRefs.inputCalGain->load())
                           : 1.0f;
@@ -1491,19 +1586,46 @@ void TONE3000Processor::updateCachedParameters() {
 // bottom (its buffers restart there, they held the other position's audio);
 // a silent one moves at once.
 void TONE3000Processor::updateInsertPlacement() {
-  if (cacheGlitchPre == rtGlitchPre) {
+  const bool glitchMoves = cacheGlitchPre != rtGlitchPre;
+  const bool abyssMoves = cacheAbyssPre != rtAbyssPre;
+  // The order only matters while both share a side.
+  const bool reorders = cacheGlitchFirst != rtGlitchFirst && cacheGlitchPre == cacheAbyssPre;
+  if (!glitchMoves && !abyssMoves && !reorders) {
+    rtGlitchFirst = cacheGlitchFirst;
     if (insertMoveGain.getTargetValue() < 1.0f)
       insertMoveGain.setTargetValue(1.0f);  // a move that was taken back
     return;
   }
-  const bool sounding = glitchFx.running();
+  const bool sounding = glitchFx.running() || abyssFx.running();
   if (!sounding || (insertMoveGain.getTargetValue() <= 0.0f && !insertMoveGain.isSmoothing())) {
+    // The moved inserts' buffers held the other position's audio: restart
+    // them. A pure reorder keeps them (same signal, other order).
+    if (glitchMoves && glitchFx.running()) glitchFx.reset();
+    if (abyssMoves && abyssFx.running()) abyssFx.reset();
     rtGlitchPre = cacheGlitchPre;
-    if (sounding) glitchFx.reset();
+    rtAbyssPre = cacheAbyssPre;
+    rtGlitchFirst = cacheGlitchFirst;
     insertMoveGain.setTargetValue(1.0f);
     return;
   }
   insertMoveGain.setTargetValue(0.0f);
+}
+
+void TONE3000Processor::processInserts(juce::AudioBuffer<float>& buffer, bool pre,
+                                       const glitchfx::Transport& transport) {
+  const auto glitch = [&] {
+    if (rtGlitchPre == pre) glitchFx.process(buffer, cacheGlitch, transport);
+  };
+  const auto pitch = [&] {
+    if (rtAbyssPre == pre) abyssFx.process(buffer, cacheAbyss);
+  };
+  if (rtGlitchFirst) {
+    glitch();
+    pitch();
+  } else {
+    pitch();
+    glitch();
+  }
 }
 
 // Audio thread. The host's tempo and position, or the standalone tempo when
@@ -2338,8 +2460,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // ##########
   // Insert effects placed before the chain (into the amps).
   // ##########
-  if (rtGlitchPre)
-    glitchFx.process(buffer, cacheGlitch, transport);
+  processInserts(buffer, true, transport);
 
   // #########################
   // Auto-align probe injection (see AutoOffset.h): while a measurement is
@@ -2515,8 +2636,7 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   // Insert effects placed after the chain, before the time FX so delay and
   // reverb catch them.
   // ##########
-  if (!rtGlitchPre)
-    glitchFx.process(buffer, cacheGlitch, transport);
+  processInserts(buffer, false, transport);
 
   // Moving an insert: the dip around the move (see updateInsertPlacement).
   if (insertMoveGain.isSmoothing() || insertMoveGain.getCurrentValue() < 1.0f) {

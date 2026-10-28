@@ -1291,6 +1291,17 @@ juce::var TONE3000Processor::getMeterLevels() const {
     glitch->setProperty("crush", a.crush.load(std::memory_order_relaxed));
     root->setProperty("glitch", juce::var(glitch.get()));
   }
+  {
+    const auto& a = abyssFx.activity();
+    juce::DynamicObject::Ptr pitch = new juce::DynamicObject();
+    juce::Array<juce::var> levels;
+    for (const auto& l : a.level) levels.add(l.load(std::memory_order_relaxed));
+    pitch->setProperty("levels", levels);
+    pitch->setProperty("bend", a.bend.load(std::memory_order_relaxed));
+    pitch->setProperty("detune", a.detune.load(std::memory_order_relaxed));
+    pitch->setProperty("input", a.input.load(std::memory_order_relaxed));
+    root->setProperty("abyss", juce::var(pitch.get()));
+  }
 
   juce::DynamicObject::Ptr blocks = new juce::DynamicObject();
   {

@@ -47,9 +47,9 @@ public:
   void hideTuner();
   RigTuner* tuner() { return tuner_.get(); }
 
-  // The gear in chain order, the Time FX unit last, and the insert-effect
-  // cards (Glitch Engine), which sit before or after the chain (tests drive
-  // these).
+  // The gear in chain order with the Time FX unit last, and the insert
+  // cards (Abyss Pitch, Glitch Engine) in signal order; inserts sit before
+  // or after the chain (tests drive these).
   std::vector<juce::Component*> modules() const;
   std::vector<juce::Component*> inserts() const;
   ToneEqOverlay& toneEq() { return toneEq_; }
@@ -84,6 +84,7 @@ private:
   std::vector<Module*> rowModules(int row) const;
   std::vector<Module*> row0Sequence() const;  // with the inserts and the FX unit
   bool insertDropPre(int x) const;
+  int insertLayoutKey() const;
   int dropIndex(const Module& dragged, int x) const;  // among the row's other modules
   int dropBarX(const Module& dragged, int index) const;
   Module* dragged_ = nullptr;
@@ -97,7 +98,8 @@ private:
   std::vector<std::unique_ptr<Module>> modules_;
   std::unique_ptr<Module> fx_;
   std::unique_ptr<Module> glitch_;  // the Glitch Engine card
-  bool glitchPreShown_ = false;     // the placement the layout reflects
+  std::unique_ptr<Module> abyss_;   // the Abyss Pitch card
+  int insertLayoutShown_ = -1;      // the insertLayoutKey the layout reflects
   OutputSpectrum spectrum_;
   CpuMeter cpu_;
   ToneEqOverlay toneEq_;  // over the spectrum's plot area

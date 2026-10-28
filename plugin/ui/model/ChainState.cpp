@@ -236,6 +236,14 @@ MeterLevels MeterLevels::parse(const juce::var& v) {
     m.glitch.stutter = static_cast<bool>(g["stutter"]);
     m.glitch.crush = static_cast<float>(num(g, "crush", 0));
   }
+  if (const auto& a = v["abyss"]; a.isObject()) {
+    if (const auto* levels = a["levels"].getArray())
+      for (int i = 0; i < std::min(5, levels->size()); ++i)
+        m.abyss.levels[i] = static_cast<float>(static_cast<double>((*levels)[i]));
+    m.abyss.bend = static_cast<float>(num(a, "bend", 0));
+    m.abyss.detune = static_cast<float>(num(a, "detune", 0));
+    m.abyss.input = static_cast<float>(num(a, "input", 0));
+  }
   return m;
 }
 

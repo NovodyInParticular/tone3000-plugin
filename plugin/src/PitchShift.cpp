@@ -448,6 +448,13 @@ void PitchShift::setEnabled(bool on) {
 
 bool PitchShift::isRunning() const { return impl_->running; }
 
+void PitchShift::stop() {
+  auto& s = *impl_;
+  s.enabled = false;
+  s.running = false;
+  s.wetMix.setCurrentAndTargetValue(0.0f);
+}
+
 void PitchShift::setParams(const Params& p) {
   auto& s = *impl_;
   if (p.window != s.params.window) {

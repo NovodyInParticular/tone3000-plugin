@@ -1,12 +1,14 @@
 #include "RigView.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 #include "core/Fonts.h"
 #include "core/KnobScale.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
+#include "views/AbyssDeckPanel.h"
 #include "views/FxDeckPanel.h"
 #include "views/GlitchDeckPanel.h"
 #include "views/rig/InsertFaces.h"
@@ -39,11 +41,11 @@ constexpr float kKnobFine = 8.0f;
 constexpr float kPulseMinRate = 0.6f, kPulseMaxRate = 3.0f;
 constexpr float kPulseFloor = 0.08f;
 
-enum class Kind { pedal, amp, cab, fx, glitch };
+enum class Kind { pedal, amp, cab, fx, glitch, abyss };
 
 // Cards with no chain block behind them: the Time FX unit and the insert
 // effects.
-bool isUnit(Kind kind) { return kind == Kind::fx || kind == Kind::glitch; }
+bool isUnit(Kind kind) { return kind == Kind::fx || kind == Kind::glitch || kind == Kind::abyss; }
 
 Kind kindOf(const ChainItem& item) {
   if (!item.tone.isNam()) return Kind::cab;
@@ -56,7 +58,8 @@ int widthOf(Kind kind) {
     case Kind::amp: return 236;
     case Kind::cab: return 150;
     case Kind::fx: return 124;
-    case Kind::glitch: return static_cast<int>(rigface::kInsertWidth);
+    case Kind::glitch:
+    case Kind::abyss: return static_cast<int>(rigface::kInsertWidth);
   }
   return 120;
 }
@@ -166,15 +169,17 @@ public:
       : services_(services), kind_(kind) {
     if (item != nullptr) setItem(*item);
     else if (kind == Kind::glitch) setHelpText(help::text(help::Key::glitchCard));
+    else if (kind == Kind::abyss) setHelpText(help::text(help::Key::abyssCard));
     else setHelpText("Time FX: modulation, delay and reverb. Click an effect to open its controls.");
-    setMouseCursor(item != nullptr || kind == Kind::glitch ? juce::MouseCursor::PointingHandCursor
-                                                           : juce::MouseCursor::NormalCursor);
+    setMouseCursor(item != nullptr || kind != Kind::fx ? juce::MouseCursor::PointingHandCursor
+                                                       : juce::MouseCursor::NormalCursor);
     services_.meters.addListener(this);
     services_.stepper.addListener(this);
   }
   ~Module() override {
     if (fxDeck_ != nullptr) fxDeck_->close();
     if (glitchDeck_ != nullptr) glitchDeck_->close();
+    if (abyssDeck_ != nullptr) abyssDeck_->close();
     if (scopeOn_) services_.backend.setBlockScopeEnabled(item_.blockId, false);
     services_.stepper.removeListener(this);
     services_.meters.removeListener(this);
@@ -218,7 +223,8 @@ public:
   bool isBypassed() const { return bypassed(); }
   // 0..1: the block's output level on the meters' -60..0 dB scale.
   float level() const {
-    if (kind_ == Kind::glitch) return bypassed() ? 0.0f : dbToUnit(services_.meters.level(MeterStore::mainId(false)));
+    if (kind_ == Kind::glitch || kind_ == Kind::abyss)
+      return bypassed() ? 0.0f : dbToUnit(services_.meters.level(MeterStore::mainId(false)));
     return kind_ == Kind::fx ? 0.0f : outLevel();
   }
   std::function<void(const std::string&)> onOpen;
@@ -227,13 +233,18 @@ public:
   std::function<void(Module&, juce::Point<int>, bool)> onReorderEnd;
   int row() const { return static_cast<int>(getProperties()["row"]); }
   // Insert cards: whether the effect runs before the amps (layout).
-  bool insertPre() const { return glitch_.pre; }
-  bool isInsert() const { return kind_ == Kind::glitch; }
+  bool insertPre() const { return kind_ == Kind::abyss ? abyss_.pre : glitch_.pre; }
+  bool isInsert() const { return kind_ == Kind::glitch || kind_ == Kind::abyss; }
+  bool isGlitch() const { return kind_ == Kind::glitch; }
 
   void advance() {
     hoverTick();
     if (kind_ == Kind::glitch) {
       advanceGlitch();
+      return;
+    }
+    if (kind_ == Kind::abyss) {
+      advanceAbyss();
       return;
     }
     if (kind_ == Kind::fx) {
@@ -316,6 +327,10 @@ public:
     pressedBody_ = kind_ != Kind::fx && !overBlend(e.position) && knobAt(e.position) < 0 && arrowAt(e.position) == 0
                    && !(kind_ == Kind::pedal && overFootswitch(e.position));
     reordering_ = false;
+    if (kind_ == Kind::abyss) {
+      if (overInsertSwitch(e.position)) pressedBody_ = false;
+      return;
+    }
     if (kind_ == Kind::glitch) {
       pressedPill_ = glitchPillAt(e.position);
       if (pressedPill_ >= 0 || overInsertSwitch(e.position)) pressedBody_ = false;
@@ -384,6 +399,18 @@ public:
       glitchMouseUp(e);
       return;
     }
+    if (kind_ == Kind::abyss) {
+      if (!e.mouseWasClicked()) return;
+      if (overInsertSwitch(e.position)) {
+        ParamBinding(services_.backend, "abyssEnabled").set(!abyss_.on);
+        advanceAbyss();
+        return;
+      }
+      if (abyssDeck_ == nullptr) abyssDeck_ = std::make_unique<AbyssDeckPanel>(services_);
+      if (abyssDeck_->isOpen()) abyssDeck_->close();
+      else abyssDeck_->open(*this, Popover::Align::left, AbyssDeckPanel::kGap, 0, Popover::Placement::below);
+      return;
+    }
     if (blendDrag_) {
       // A blend press never opens the block.
       blendDrag_ = false;
@@ -421,6 +448,10 @@ public:
   }
 
   void mouseMove(const juce::MouseEvent& e) override {
+    if (kind_ == Kind::abyss) {
+      setHelpText(help::text(overInsertSwitch(e.position) ? help::Key::abyssPower : help::Key::abyssCard));
+      return;
+    }
     if (kind_ == Kind::glitch) {
       const int pill = glitchPillAt(e.position);
       const bool sw = overInsertSwitch(e.position);
@@ -633,7 +664,8 @@ private:
       case Kind::amp: row = box.reduced(10).removeFromTop(34).reduced(4, 0); break;
       case Kind::cab: row = box.reduced(8).removeFromBottom(26); break;
       case Kind::fx:
-      case Kind::glitch: return {};
+      case Kind::glitch:
+      case Kind::abyss: return {};
     }
     return {row.withWidth(kArrowW), row.withTrimmedLeft(row.getWidth() - kArrowW)};
   }
@@ -958,6 +990,7 @@ private:
 
   bool bypassed() const {
     if (kind_ == Kind::glitch) return !glitch_.on;
+    if (kind_ == Kind::abyss) return !abyss_.on;
     return kind_ == Kind::fx ? fxBits_ == 0 : !item_.params.enabled;
   }
   bool overFootswitch(juce::Point<float> p) const {
@@ -1082,6 +1115,11 @@ private:
         rigface::drawGlitch(g, box, glitch_);
         break;
       }
+      case Kind::abyss: {
+        body(g, box, abyss_.on);
+        rigface::drawAbyss(g, box, abyss_);
+        break;
+      }
       case Kind::fx: {
         body(g, box, fxBits_ > 0);
         g.setColour(theme::kWhite);
@@ -1199,6 +1237,62 @@ private:
     }
   }
 
+  // The Abyss Pitch card: like the glitch card, a look snapshot from its
+  // parameters and the activity feed (MeterStore::abyss).
+  float paramNormOf(const char* id) const {
+    auto* p = services_.backend.parameter(id);
+    return p != nullptr ? p->getValue() : 0.0f;
+  }
+  void advanceAbyss() {
+    const auto& a = services_.meters.abyss();
+    rigface::AbyssLook next;
+    next.on = paramOn("abyssEnabled");
+    next.pre = !paramOn("abyssPlacement");
+    next.smooth = paramOn("abyssTracking");
+    next.subTwo = paramNormOf("abyssSubTwo");
+    next.subOne = paramNormOf("abyssSubOne");
+    next.up = paramNormOf("abyssUp");
+    next.shift = paramNormOf("abyssShiftLevel");
+    // Shift and interval in semitones, off their normalised maps.
+    static constexpr float kIntervals[] = {0.0f, 1.0f, -1.0f, 6.0f, -6.0f, 11.0f, -13.0f};
+    const int interval = juce::jlimit(0, 6, juce::roundToInt(paramNormOf("abyssInterval") * 6.0f));
+    next.shiftSemitones = interval > 0 ? kIntervals[interval] : -12.0f + 24.0f * paramNormOf("abyssShift");
+    next.detuneCents = 100.0f * paramNormOf("abyssDetune");
+    if (next.on) {
+      next.bend = a.bend;
+      for (int i = 0; i < 5; ++i) next.activity[i] = a.levels[i];
+      next.input = a.input;
+    }
+    const bool moving = next.on && theme::animate() && isShowing();
+    if (moving) {
+      fxDt_ += 1.0f / 30.0f;
+      if (!(fxFrame_ = !fxFrame_)) {
+        fxTime_ += fxDt_;
+        fxDt_ = 0.0f;
+      }
+    }
+    next.time = moving ? fxTime_ : 0.0f;
+    const bool changed = next.on != abyss_.on || next.pre != abyss_.pre || next.smooth != abyss_.smooth ||
+                         !juce::approximatelyEqual(next.subTwo, abyss_.subTwo) ||
+                         !juce::approximatelyEqual(next.subOne, abyss_.subOne) ||
+                         !juce::approximatelyEqual(next.up, abyss_.up) ||
+                         !juce::approximatelyEqual(next.shift, abyss_.shift) ||
+                         !juce::approximatelyEqual(next.shiftSemitones, abyss_.shiftSemitones) ||
+                         !juce::approximatelyEqual(next.detuneCents, abyss_.detuneCents) ||
+                         std::abs(next.bend - abyss_.bend) > 0.05f;
+    const bool screenMoves = !juce::approximatelyEqual(next.time, abyss_.time);
+    abyss_ = next;
+    if (changed) {
+      bypassed_ = {};
+      repaint();
+    } else if (screenMoves) {
+      repaint(rigface::abyssScreen(nominalBox())
+                  .transformedBy(juce::AffineTransform::scale(scale()))
+                  .getSmallestIntegerContainer()
+                  .expanded(2));
+    }
+  }
+
   Services& services_;
   Kind kind_;
   ChainItem item_;
@@ -1239,6 +1333,8 @@ private:
   int lastEvents_ = -1, pressedPill_ = -1;
   juce::uint32 eventAt_ = 0, lastFlickerAt_ = 0;
   std::unique_ptr<GlitchDeckPanel> glitchDeck_;
+  rigface::AbyssLook abyss_;
+  std::unique_ptr<AbyssDeckPanel> abyssDeck_;
 };
 
 RigView::RigView(Services& services)
@@ -1320,11 +1416,11 @@ void RigView::prefChanged(const juce::String& key) {
 void RigView::tick() {
   for (auto& m : modules_) m->advance();
   if (fx_ != nullptr) fx_->advance();
-  if (glitch_ != nullptr) {
-    glitch_->advance();
-    // A placement change from the deck, a preset or the host moves the card.
-    if (glitch_->insertPre() != glitchPreShown_ && dragged_ != glitch_.get()) resized();
-  }
+  for (auto* m : {glitch_.get(), abyss_.get()})
+    if (m != nullptr) m->advance();
+  // A placement or order change from a deck, a preset or the host moves
+  // the cards.
+  if (insertLayoutKey() != insertLayoutShown_ && (dragged_ == nullptr || !dragged_->isInsert())) resized();
   const auto now = juce::Time::getMillisecondCounter();
   const float dt = lastTickMs_ == 0 ? 0.0f : juce::jmin(0.1f, static_cast<float>(now - lastTickMs_) / 1000.0f);
   lastTickMs_ = now;
@@ -1433,13 +1529,15 @@ void RigView::rebuild() {
     fx_ = std::make_unique<Module>(services_, Kind::fx, nullptr);
     addAndMakeVisible(*fx_);
   }
-  if (glitch_ == nullptr) {
-    glitch_ = std::make_unique<Module>(services_, Kind::glitch, nullptr);
-    glitch_->getProperties().set("row", 0);
-    glitch_->onReorderDrag = [this](Module& mod, juce::Point<int> pos) { reorderDrag(mod, pos); };
-    glitch_->onReorderEnd = [this](Module& mod, juce::Point<int> pos, bool commit) { reorderEnd(mod, pos, commit); };
-    glitch_->advance();
-    addAndMakeVisible(*glitch_);
+  for (auto* slot : {&abyss_, &glitch_}) {
+    if (*slot != nullptr) continue;
+    *slot = std::make_unique<Module>(services_, slot == &glitch_ ? Kind::glitch : Kind::abyss, nullptr);
+    auto& m = **slot;
+    m.getProperties().set("row", 0);
+    m.onReorderDrag = [this](Module& mod, juce::Point<int> pos) { reorderDrag(mod, pos); };
+    m.onReorderEnd = [this](Module& mod, juce::Point<int> pos, bool commit) { reorderEnd(mod, pos, commit); };
+    m.advance();
+    addAndMakeVisible(m);
   }
   rowCount_ = stereo_ ? 2 : 1;
   resized();
@@ -1490,7 +1588,7 @@ void RigView::resized() {
     if (row == 0)
       fx_->setBounds(juce::roundToInt(x), y, juce::roundToInt(widthOf(Kind::fx) * scale), h);
   }
-  if (glitch_ != nullptr) glitchPreShown_ = glitch_->insertPre();
+  insertLayoutShown_ = insertLayoutKey();
   layoutCables();
 }
 
@@ -1498,13 +1596,26 @@ void RigView::resized() {
 // chain, inserts placed after it, the Time FX unit.
 std::vector<RigView::Module*> RigView::row0Sequence() const {
   std::vector<Module*> out;
-  const bool pre = glitch_ != nullptr && glitch_->insertPre();
-  if (glitch_ != nullptr && pre) out.push_back(glitch_.get());
+  // The two inserts in processing order (insertOrder), each on its side.
+  auto* p = services_.backend.parameter("insertOrder");
+  const bool glitchFirst = p != nullptr && p->getValue() >= 0.5f;
+  const std::array<Module*, 2> inserts = {glitchFirst ? glitch_.get() : abyss_.get(),
+                                          glitchFirst ? abyss_.get() : glitch_.get()};
+  for (auto* m : inserts)
+    if (m != nullptr && m->insertPre()) out.push_back(m);
   for (const auto& m : modules_)
     if (m->row() == 0) out.push_back(m.get());
-  if (glitch_ != nullptr && !pre) out.push_back(glitch_.get());
+  for (auto* m : inserts)
+    if (m != nullptr && !m->insertPre()) out.push_back(m);
   if (fx_ != nullptr) out.push_back(fx_.get());
   return out;
+}
+
+// What the insert cards' layout depends on: both placements and the order.
+int RigView::insertLayoutKey() const {
+  auto* p = services_.backend.parameter("insertOrder");
+  return (glitch_ != nullptr && glitch_->insertPre() ? 1 : 0) | (abyss_ != nullptr && abyss_->insertPre() ? 2 : 0) |
+         (p != nullptr && p->getValue() >= 0.5f ? 4 : 0);
 }
 
 // An insert card dropped at `x`: before the amps when left of the first
@@ -1570,8 +1681,17 @@ void RigView::reorderEnd(Module& m, juce::Point<int> pos, bool commit) {
     dragged_ = nullptr;
     dropIndex_ = -1;
     m.setAlpha(1.0f);
-    if (commit && rowBand.contains(pos) && pre != m.insertPre()) {
-      ParamBinding(services_.backend, "glitchPlacement").set(pre ? 0.0f : 1.0f);
+    if (commit && rowBand.contains(pos)) {
+      if (pre != m.insertPre())
+        ParamBinding(services_.backend, m.isGlitch() ? "glitchPlacement" : "abyssPlacement").set(pre ? 0.0f : 1.0f);
+      // Dropped beside the other insert on the same side: the order follows
+      // where it landed.
+      auto* other = m.isGlitch() ? abyss_.get() : glitch_.get();
+      if (other != nullptr && other->insertPre() == pre) {
+        const bool glitchFirst = m.isGlitch() ? m.getBounds().getCentreX() < other->getBounds().getCentreX()
+                                              : other->getBounds().getCentreX() < m.getBounds().getCentreX();
+        ParamBinding(services_.backend, "insertOrder").set(glitchFirst ? 1.0f : 0.0f);
+      }
       m.advance();
     }
     resized();
@@ -1640,7 +1760,8 @@ std::vector<juce::Component*> RigView::modules() const {
 
 std::vector<juce::Component*> RigView::inserts() const {
   std::vector<juce::Component*> out;
-  if (glitch_ != nullptr) out.push_back(glitch_.get());
+  for (auto* m : row0Sequence())
+    if (m->isInsert()) out.push_back(m);
   return out;
 }
 

@@ -50,6 +50,7 @@ public:
   float correlation() const { return correlation_; }
   // The insert effects' latest activity (raw, per poll).
   const MeterLevels::Glitch& glitch() const { return glitch_; }
+  const MeterLevels::Abyss& abyss() const { return abyss_; }
 
   void addListener(Listener* l);
   void removeListener(Listener* l);
@@ -70,6 +71,7 @@ private:
   juce::int64 lastCpuPublishMs_ = 0;
   float correlation_ = 1;
   MeterLevels::Glitch glitch_;
+  MeterLevels::Abyss abyss_;
   juce::ListenerList<Listener> listeners;
 };
 

@@ -120,6 +120,11 @@ public:
   void setEnabled(bool on);
   bool isRunning() const;
 
+  /** Audio thread. Stops at once, no fade (the caller has already faded the
+      output): not running, and the next setEnabled(true) starts fresh.
+      Allocation-free, unlike prepare(). */
+  void stop();
+
   /** Audio thread, once per block. Each field early-outs when unchanged. */
   void setParams(const Params& p);
 
