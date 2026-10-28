@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "core/Ether.h"
 #include "core/Fonts.h"
 #include "core/Theme.h"
 
@@ -24,6 +25,17 @@ void insertLed(juce::Graphics& g, juce::Point<float> c, bool on) {
 
 void pill(juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text, bool on, bool hold) {
   const float corner = r.getHeight() * 0.5f;
+  if (ether::active()) {
+    ether::pill(g, r, on, false);
+    g.setColour(on ? theme::kWhite : theme::kMuted);
+    g.setFont(label(9.5f, true));
+    g.drawText(text, r, juce::Justification::centred, false);
+    if (hold) {
+      g.setColour(theme::kWhite.withAlpha(0.7f));
+      g.fillEllipse(juce::Rectangle<float>(3.0f, 3.0f).withCentre({r.getRight() - 6.0f, r.getCentreY()}));
+    }
+    return;
+  }
   if (on) {
     if (theme::kStyle.glow > 0.0f) {
       g.setColour(theme::kBrandYellow.withAlpha(0.22f * theme::kStyle.glow));
@@ -49,6 +61,10 @@ void pill(juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text,
 
 void insertSwitch(juce::Graphics& g, juce::Rectangle<float> box, bool on) {
   const auto fs = insertFootswitch(box);
+  if (ether::active()) {
+    ether::lavaSwitch(g, fs, on, box.getX() * 0.003f + 0.4f);
+    return;
+  }
   if (on) {
     if (theme::kStyle.glow > 0.0f) {
       g.setColour(theme::kBrandYellow.withAlpha(0.22f * theme::kStyle.glow));
@@ -84,8 +100,8 @@ juce::Rectangle<float> insertFootswitch(juce::Rectangle<float> box) {
 void drawGlitch(juce::Graphics& g, juce::Rectangle<float> box, const GlitchLook& look) {
   insertLed(g, {box.getX() + 12, box.getY() + 14}, look.on);
   g.setColour(look.on ? theme::kWhite : theme::kGray);
-  g.setFont(label(12, true));
-  g.drawText("GLITCH", box.withHeight(28).withTrimmedLeft(16), juce::Justification::centred, false);
+  g.setFont(Fonts::title(12));
+  g.drawText(theme::kStyle.displayTitles ? "Glitch" : "GLITCH", box.withHeight(28).withTrimmedLeft(16), juce::Justification::centred, false);
 
   // The screen: a wave drawn through the crusher, stepped by the Bits and
   // the rate reduction; repeats tick across it while a stutter plays, and
@@ -117,12 +133,31 @@ void drawGlitch(juce::Graphics& g, juce::Rectangle<float> box, const GlitchLook&
         wave.lineTo(x, y);
       }
     }
-    if (look.on && theme::kStyle.glow > 0.0f) {
-      g.setColour(colour.withAlpha(0.2f * theme::kStyle.glow));
-      g.strokePath(wave, juce::PathStrokeType(3.5f));
+    if (ether::active()) {
+      if (look.on && look.split) {
+        // Chromatic aberration: the picture's red and cyan pulled apart.
+        g.setColour(juce::Colour(0xffff3060).withAlpha(0.55f));
+        g.strokePath(wave, juce::PathStrokeType(1.3f), juce::AffineTransform::translation(-2.5f, 0.0f));
+        g.setColour(juce::Colour(0xff30f0ff).withAlpha(0.55f));
+        g.strokePath(wave, juce::PathStrokeType(1.3f), juce::AffineTransform::translation(2.5f, 0.0f));
+        // Pixel melt: colour drips running down from the top.
+        for (int k = 0; k < 9; ++k) {
+          const float x = screen.getX() + 4.0f + static_cast<float>(k) * (screen.getWidth() - 8.0f) / 8.0f;
+          const float len = screen.getHeight() * (0.2f + 0.5f * static_cast<float>((k * 37) % 11) / 11.0f) *
+                            juce::jlimit(0.0f, 1.0f, look.eventAge / 0.2f);
+          g.setColour(ether::palette(static_cast<float>(k) / 9.0f, 0.55f));
+          g.fillRect(x - 1.5f, screen.getY() + 1.0f, 3.0f, len);
+        }
+      }
+      ether::rainbowStroke(g, wave, 1.4f, look.time * 0.1f, look.on ? 1.0f : 0.35f);
+    } else {
+      if (look.on && theme::kStyle.glow > 0.0f) {
+        g.setColour(colour.withAlpha(0.2f * theme::kStyle.glow));
+        g.strokePath(wave, juce::PathStrokeType(3.5f));
+      }
+      g.setColour(colour);
+      g.strokePath(wave, juce::PathStrokeType(1.3f));
     }
-    g.setColour(colour);
-    g.strokePath(wave, juce::PathStrokeType(1.3f));
     if (look.on && look.repeating) {
       // Repeat markers: the loop's seams.
       g.setColour(theme::kWhite.withAlpha(0.35f));
@@ -130,7 +165,10 @@ void drawGlitch(juce::Graphics& g, juce::Rectangle<float> box, const GlitchLook&
         g.drawVerticalLine(juce::roundToInt(pic.getX() + pic.getWidth() * static_cast<float>(k) / 4.0f), pic.getY(),
                            pic.getBottom());
     }
-    if (look.freezeLevel > 0.01f) {
+    if (ether::active()) {
+      // Freeze: the screen's colours crystallise.
+      ether::crystal(g, screen, juce::jlimit(0.0f, 1.0f, look.freezeLevel));
+    } else if (look.freezeLevel > 0.01f) {
       // Frost: a pale wash and a few ice lines, as strong as the freeze fade.
       const float f = juce::jlimit(0.0f, 1.0f, look.freezeLevel);
       g.setColour(theme::kWhite.withAlpha(0.10f * f));
@@ -172,8 +210,8 @@ void drawGlitch(juce::Graphics& g, juce::Rectangle<float> box, const GlitchLook&
 void drawAbyss(juce::Graphics& g, juce::Rectangle<float> box, const AbyssLook& look) {
   insertLed(g, {box.getX() + 12, box.getY() + 14}, look.on);
   g.setColour(look.on ? theme::kWhite : theme::kGray);
-  g.setFont(label(12, true));
-  g.drawText("ABYSS", box.withHeight(28).withTrimmedLeft(16), juce::Justification::centred, false);
+  g.setFont(Fonts::title(12));
+  g.drawText(theme::kStyle.displayTitles ? "Abyss" : "ABYSS", box.withHeight(28).withTrimmedLeft(16), juce::Justification::centred, false);
 
   // The screen: one line per layer at its pitch (up high, octaves down
   // low), lit by its level and its live output; the bend moves them all,
@@ -181,7 +219,17 @@ void drawAbyss(juce::Graphics& g, juce::Rectangle<float> box, const AbyssLook& l
   const auto screen = abyssScreen(box);
   g.setColour(theme::kBlack.withAlpha(0.55f));
   g.fillRoundedRectangle(screen, 4.0f);
-  {
+  if (ether::active()) {
+    // A vortex: octaves down pull inward, up blooms outward, detune splits it.
+    ether::Vortex v;
+    v.on = look.on;
+    v.down = juce::jlimit(0.0f, 1.0f, std::max(look.subOne, look.subTwo) * 0.6f + look.activity[0] + look.activity[1]);
+    v.up = juce::jlimit(0.0f, 1.0f, look.up * 0.6f + look.activity[2]);
+    v.shift = juce::jlimit(0.0f, 1.0f, look.shift * 0.6f + look.activity[3] + look.activity[4]);
+    v.detune = juce::jlimit(0.0f, 1.0f, look.detuneCents / 100.0f);
+    v.bend = look.bend;
+    ether::vortex(g, screen, v);
+  } else {
   juce::Graphics::ScopedSaveState save(g);
   g.reduceClipRegion(screen.reduced(1.0f).toNearestInt());
   const auto pic = screen.reduced(4, 6);

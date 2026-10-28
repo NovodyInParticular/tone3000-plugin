@@ -89,6 +89,9 @@ struct Style {
   Grille grille = Grille::photo;  // how the rig view draws a cab
   juce::Colour knobFace{0xff1d1d1d};  // ring-style knob body
   juce::Colour background{0xff000000};  // behind the chain
+  bool psychedelic = false;  // the Ether art (core/Ether.h) on every view that has it
+  bool displayTitles = false;  // headings and slot titles in the display face (Shrikhand)
+  bool roundText = false;      // body text and labels in the rounded face (Varela Round)
 };
 inline Style kStyle;
 

@@ -32,6 +32,7 @@
 #include "services/Toast.h"
 #include "services/ToneStepper.h"
 #include "services/LiteAdvisor.h"
+#include "core/Ether.h"
 #include "core/Skin.h"
 #include "core/Theme.h"
 #include "services/LoopbackServer.h"
@@ -996,6 +997,72 @@ struct ToneQueryTests : juce::UnitTest {
   }
 };
 
+// The Ether skin's rules (core/Ether.h): it applies with its fonts, it is
+// static whenever motion isn't allowed, nothing it fires can flash faster
+// than 3 times a second, and the watchdog falls back to static.
+struct EtherTests : juce::UnitTest {
+  EtherTests() : juce::UnitTest("Ether skin", "ui") {}
+
+  void runTest() override {
+    const bool reduce = theme::kReduceMotion;
+    const float trip = ether::trip();
+
+    beginTest("ether is a built-in with the psychedelic art and its own faces");
+    expectEquals(skin::apply("ether"), juce::String("ether"));
+    expect(ether::active());
+    expect(theme::kStyle.displayTitles && theme::kStyle.roundText);
+    const auto display = Fonts::display(14.0f), round = Fonts::round(14.0f);
+    expect(display.getTypefacePtr() != nullptr && display.getHeight() > 0.0f, "Shrikhand loads");
+    expect(round.getTypefacePtr() != nullptr && round.getHeight() > 0.0f, "Varela Round loads");
+    expect(Fonts::width(display, "Abyss") > 0.0f && std::isfinite(Fonts::width(round, "Glitch 1/16")));
+
+    beginTest("motion follows Trip Intensity and the reduce-animations setting");
+    theme::kReduceMotion = false;
+    ether::resetWatchdog();
+    ether::setTrip(0.5f);
+    expect(ether::motion() == !ether::systemReducedMotion());
+    ether::setTrip(0.0f);
+    expect(!ether::motion(), "trip 0 is static");
+    expectEquals(ether::clock(), 0.0);
+    ether::setTrip(0.5f);
+    theme::kReduceMotion = true;
+    expect(!ether::motion(), "reduce animations is static");
+    expectEquals(ether::clock(), 0.0);
+    theme::kReduceMotion = false;
+
+    beginTest("the flash gate allows at most one start per 340 ms");
+    {
+      ether::FlashGate gate;
+      int allowed = 0;
+      const auto until = juce::Time::getMillisecondCounter() + 1000;
+      while (juce::Time::getMillisecondCounter() < until) {
+        if (gate.allow()) ++allowed;
+        juce::Thread::sleep(5);
+      }
+      expect(allowed <= 3, "at most 3 a second: " + juce::String(allowed));
+      expect(allowed >= 2);
+    }
+
+    beginTest("slow frames fall back to the static look");
+    if (ether::motion()) {
+      for (int i = 0; i < 200; ++i) ether::reportFrameMs(60.0);
+      expect(ether::degraded());
+      expect(!ether::motion());
+      ether::resetWatchdog();
+      expect(ether::motion());
+    }
+
+    beginTest("other skins are untouched");
+    skin::apply("neural");
+    expect(!ether::active());
+    expect(!theme::kStyle.displayTitles && !theme::kStyle.roundText);
+
+    theme::kReduceMotion = reduce;
+    ether::setTrip(trip);
+    ether::resetWatchdog();
+  }
+};
+
 // Previous / next per block, against the main-browse fixture: blk-1 holds
 // tone 104 at index 3 of page 1 (of 4), blk-2 tone 101 at index 0 of page
 // 2; both lists are [101 102 103 104 105 106].
@@ -1008,7 +1075,8 @@ struct SkinTests : juce::UnitTest {
       const auto list = skin::available();
       juce::StringArray ids;
       for (const auto& i : list) ids.add(i.id);
-      for (const auto* id : {"neural", "minimal", "vintage", "classic", "burningchurch"}) expect(ids.contains(id), id);
+      for (const auto* id : {"neural", "minimal", "vintage", "classic", "burningchurch", "ether"})
+        expect(ids.contains(id), id);
       expectEquals(skin::apply("vintage"), juce::String("vintage"));
       expect(skin::background() == nullptr, "vintage has no background art");
       expectEquals(skin::apply("burningchurch"), juce::String("burningchurch"));
@@ -3712,6 +3780,7 @@ Tone3000ClientTests tone3000ClientTests;
 ToneModelTests toneModelTests;
 ToneQueryTests toneQueryTests;
 SkinTests skinTests;
+EtherTests etherTests;
 LiteAdvisorTests liteAdvisorTests;
 ToneStepperTests toneStepperTests;
 ReadoutTests readoutTests;

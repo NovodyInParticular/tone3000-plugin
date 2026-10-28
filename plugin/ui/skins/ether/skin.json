@@ -1,0 +1,40 @@
+{
+  "name": "Ether",
+  "author": "TONE3000 rig fork",
+  "version": "1.0",
+  "description": "A liquid light show: drifting oil-projector colour over cosmic indigo, rainbow rings, lava-lamp switches, kaleidoscope cabs. Trip Intensity in Settings.",
+  "colors": {
+    "accent": "#FF4FD8",
+    "brandRed": "#FF4F9A",
+    "brandBlue": "#8A5CFF",
+    "link": "#2EE6D6",
+    "text": "#FFF4FF",
+    "black": "#0B0418",
+    "muted": "#F3E8FFC0",
+    "subtle": "#F3E8FF8C",
+    "highlight": "#C77DFF33",
+    "gray": "#A898C8",
+    "border": "#C77DFF66",
+    "surface": "#1A0B33EB",
+    "surfaceRaised": "#22104AF0",
+    "segmentedTrack": "#8A5CFF38",
+    "panelBg": "#140829F7",
+    "meterLow": "#2EE6D6",
+    "meterMid": "#C77DFF",
+    "meterHigh": "#FF9A3C"
+  },
+  "logo": { "style": "outline", "color": "#FF4FD8", "echo": "#2EE6D680", "glow": 1.0 },
+  "style": {
+    "knob": "ring",
+    "glow": 0.8,
+    "monoLabels": false,
+    "animations": true,
+    "glitchOnLoad": true,
+    "grille": "hex",
+    "knobFace": "#1A0B33",
+    "background": "#120726",
+    "psychedelic": true,
+    "titleFont": "display",
+    "textFont": "round"
+  }
+}

@@ -1,5 +1,6 @@
 #include "NativeEditor.h"
 
+#include "core/Ether.h"
 #include "core/Skin.h"
 
 #include "core/Fonts.h"
@@ -230,9 +231,16 @@ void NativeEditor::paint(juce::Graphics& g) { g.fillAll(theme::kBlack); }
 NativeEditor::SkinReady::SkinReady(UiPrefs& prefs) {
   skin::apply(prefs.get(UiPrefs::kSkin));
   theme::kReduceMotion = prefs.getBool(UiPrefs::kReduceAnimations, false);
+  ether::setTrip(static_cast<float>(prefs.get(UiPrefs::kTripIntensity, "2").getIntValue()) / 4.0f);
 }
 
 void NativeEditor::prefChanged(const juce::String& key) {
+  if (key == UiPrefs::kTripIntensity) {
+    // No rebuild: the art reads it every frame.
+    ether::setTrip(static_cast<float>(prefs_.get(UiPrefs::kTripIntensity, "2").getIntValue()) / 4.0f);
+    ether::resetWatchdog();
+    return;
+  }
   if (key != UiPrefs::kSkin && key != UiPrefs::kReduceAnimations) return;
   // Not from inside the listener call: the picker that wrote the pref lives
   // in the tree being replaced.
@@ -245,6 +253,7 @@ void NativeEditor::prefChanged(const juce::String& key) {
 void NativeEditor::rebuildRoot() {
   skin::apply(prefs_.get(UiPrefs::kSkin));
   theme::kReduceMotion = prefs_.getBool(UiPrefs::kReduceAnimations, false);
+  ether::resetWatchdog();
   const bool settingsOpen = root_->settings() != nullptr;
   removeChildComponent(root_.get());
   root_.reset();

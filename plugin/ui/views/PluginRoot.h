@@ -62,6 +62,7 @@ class PluginRoot : public juce::Component,
                    private ConnectionGate::Listener,
                    private UpdateCheck::Listener,
                    private ToneSession::Listener,
+                   private UiClock::Listener,
                    private juce::ComponentListener {
 public:
   // A host may refuse or delay the resize; show the banner anyway after a beat.
@@ -162,6 +163,13 @@ private:
   ToastView toast_;
   juce::Image backdrop_;  // the skin's chain backdrop, cached
   int backdropGeneration_ = -1;
+  // The Ether skin's moving backdrop (core/Ether.h): its low-resolution
+  // blob layer, and the clock that drives every Ether picture. The backdrop
+  // repaints at 15 fps, and only while the art moves and the window shows.
+  void tick() override;
+  juce::Image etherBlobs_;
+  int etherFrameShown_ = -1;
+  juce::uint32 lastEtherTickMs_ = 0;
   LiteSuggestionView lite_;
   std::unique_ptr<UpdateNotice> updateNotice_;
   std::unique_ptr<ConnectionModal> connectionModal_;

@@ -113,6 +113,16 @@ const std::map<juce::String, Drive>& drives() {
          clickByHelp(root, "Density:", /*right=*/true);
          wait(200);
        }},
+      {"rig-ether-glitch-deck",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Glitch Engine:");
+         wait(200);
+       }},
+      {"rig-ether-abyss-deck",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Abyss Pitch:");
+         wait(200);
+       }},
       {"rig-neural-abyss-deck",
        [](PluginRoot& root, MockBackend&) {
          clickByHelp(root, "Abyss Pitch:");
@@ -538,6 +548,7 @@ const std::map<juce::String, Drive>& drives() {
 
       // Settings
       {"settings-plugin", [](PluginRoot& root, MockBackend&) { openSettings(root); }},
+      {"settings-ether", [](PluginRoot& root, MockBackend&) { openSettings(root); }},
       {"settings-advanced",
        [](PluginRoot& root, MockBackend&) {
          openSettings(root);

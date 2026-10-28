@@ -22,6 +22,7 @@ struct GlitchLook {
   bool repeating = false;    // a stutter or random glitch is playing
   int event = 0;             // last glitch kind (glitchfx::Event)
   float eventAge = 1.0f;     // seconds since it fired (1+: long ago)
+  bool split = false;        // Ether: the RGB split / pixel melt is showing (gated, < 3 a second)
   float time = 0.0f;         // animation clock, s (0 on static skins)
 };
 

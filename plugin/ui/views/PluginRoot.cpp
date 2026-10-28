@@ -1,6 +1,7 @@
 #include "PluginRoot.h"
 
 #include "core/Design.h"
+#include "core/Ether.h"
 #include "core/Skin.h"
 #include "core/Help.h"
 #include "core/NoDefaultFocus.h"
@@ -80,6 +81,7 @@ PluginRoot::PluginRoot(Services& services)
   services_.connection.addListener(this);
   services_.updates.addListener(this);
   services_.session.addListener(this);
+  services_.clock.addListener(this);
   hintsVisible_ = services_.hints.enabled();
   updateChromeHeight();
   bannerChanged();
@@ -89,6 +91,7 @@ PluginRoot::PluginRoot(Services& services)
 }
 
 PluginRoot::~PluginRoot() {
+  services_.clock.removeListener(this);
   removeMouseListener(&focusPolicy_);
   if (keyWindow_ != nullptr) keyWindow_->removeKeyListener(&focusPolicy_);
   services_.session.onAuthenticated = nullptr;
@@ -462,6 +465,12 @@ void PluginRoot::paint(juce::Graphics& g) {
   // grid / scanline texture, rendered once per size and skin.
   const auto& style = theme::kStyle;
   const auto area = main_.getBounds();
+  if (ether::active()) {
+    const auto start = juce::Time::getMillisecondCounterHiRes();
+    ether::backdrop(g, area, etherBlobs_);
+    ether::reportFrameMs(juce::Time::getMillisecondCounterHiRes() - start);
+    return;
+  }
   if (style.background == theme::kBlack && style.grid <= 0.0f && style.scanlines <= 0.0f &&
       skin::background() == nullptr)
     return;
@@ -484,6 +493,26 @@ void PluginRoot::paint(juce::Graphics& g) {
     }
   }
   g.drawImageAt(backdrop_, area.getX(), area.getY());
+}
+
+// UI clock (30 Hz): advances the Ether art's clock and its energy (the
+// output level), and repaints the moving backdrop every other tick.
+void PluginRoot::tick() {
+  const auto now = juce::Time::getMillisecondCounter();
+  const double dt = lastEtherTickMs_ == 0 ? 0.0 : juce::jmin(0.1, (now - lastEtherTickMs_) / 1000.0);
+  lastEtherTickMs_ = now;
+  if (!ether::active() || !isShowing()) return;  // hidden or minimised: everything pauses
+  const float out = services_.meters.level(MeterStore::mainId(false));
+  ether::setEnergy(juce::jlimit(0.0f, 1.0f, (out + 48.0f) / 48.0f));
+  ether::advance(dt);
+  if (!ether::motion()) return;
+  // The backdrop's frames are 10 a second (core/Ether.cpp): repaint when
+  // a new one is due.
+  const int frame = static_cast<int>(std::floor(ether::clock() * 10.0));
+  if (frame != etherFrameShown_) {
+    etherFrameShown_ = frame;
+    repaint(main_.getBounds());
+  }
 }
 
 void PluginRoot::openSettings(SettingsScreen::Tab tab) {

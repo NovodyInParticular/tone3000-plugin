@@ -1,7 +1,8 @@
 # TONE3000 Plugin
 
 > **Custom build.** This fork adds Clouds (Mutable Instruments' granular
-> effect), a Time FX rack, dual cab IRs, a Rig view with a live spectrum,
+> effect), the Glitch Engine and Abyss Pitch inserts, the psychedelic Ether
+> skin, a Time FX rack, dual cab IRs, a Rig view with a live spectrum,
 > rig sharing, skins, previous/next tone stepping and more on top of the
 > official v0.0.12. See **[What's different](CUSTOM-CHANGES.md)**, and get
 > installers from [Releases](https://github.com/NovodyInParticular/tone3000-plugin/releases).
@@ -194,7 +195,8 @@ flowchart LR
     IM --> IG["Input Level"]
     IG --> GATE["Noise Gate *"]
     GATE --> TR["Pitch Shift *"]
-    TR --> RS(("⇅ 48k"))
+    TR --> PRE["Pre-amp inserts *\n(Abyss Pitch, Glitch Engine)"]
+    PRE --> RS(("⇅ 48k"))
     RS --> OS(("×N ↑ *"))
     subgraph CHAINS["Tone chains, 48 kHz × oversampling factor"]
         direction LR
@@ -211,7 +213,9 @@ flowchart LR
     PAN --> DCB["DC Blocker\n(~5 Hz HPF)"]
     DCB --> TS["Tone Stack *"]
     TS --> CLOUDS["Clouds *"]
-    CLOUDS --> OG["Output Level"]
+    CLOUDS --> POST["Post-amp inserts *\n(Abyss Pitch, Glitch Engine)"]
+    POST --> TFX["Time FX *"]
+    TFX --> OG["Output Level"]
     OG --> OUT([Out])
 ```
 
@@ -313,6 +317,14 @@ flowchart LR
   Texture and Blend plus a power switch; right-click the group for the rest.
   The engine runs at the module's 32 kHz on the wet path only, so the dry
   signal gets no added latency.
+- **Insert effects (Abyss Pitch, Glitch Engine)**: each runs either before
+  the chain (into the amps) or after Clouds (before the Time FX), set by its
+  placement or by dragging its card in the rig view; when both share a side,
+  `insertOrder` picks which runs first. Moving one while it sounds dips the
+  output for ~12 ms instead of clicking. Abyss Pitch (default before the
+  amps) layers -2 / -1 / +1 octave and a shifted voice on the project's own
+  low-latency shifter (Tight 11 ms / Smooth 21 ms, reported to the host only
+  while on). The Glitch Engine (default after Clouds) adds no latency.
 - **Oversampling**: a Plugin Settings option runs the whole chain at 2x/4x/8x the
   48 kHz base rate: minimum-phase half-band filters (zero added latency),
   with NAM models phase-interleaved across N native-rate instances so
@@ -464,7 +476,9 @@ JUCE has its own licensing, including optional commercial terms; see
 carries its own license terms in its directory. **AudioDSPTools**'
 `ResamplingContainer` originates from the iPlug2 project (license in that
 source). The CLAP build uses **clap-juce-extensions** and the **CLAP** SDK
-(both MIT), fetched at configure time.
+(both MIT), fetched at configure time. The Ether skin's fonts (Shrikhand,
+Varela Round) are under the SIL Open Font License 1.1, licence files next to
+them in `plugin/ui/assets/`.
 
 ## Credits
 
@@ -508,6 +522,14 @@ source). The CLAP build uses **clap-juce-extensions** and the **CLAP** SDK
 - [Roboto Mono](https://fonts.google.com/specimen/Roboto+Mono) and
   [Arimo](https://fonts.google.com/specimen/Arimo) (Apache-2.0), embedded in
   the UI; Arimo stands in for Arial where it isn't installed.
+- [Shrikhand](https://fonts.google.com/specimen/Shrikhand) by Jonny Pinhorn
+  and [Varela Round](https://fonts.google.com/specimen/Varela+Round) by Joe
+  Prince (SIL Open Font License 1.1), the Ether skin's display and text
+  faces. Vendored unmodified in `plugin/ui/assets/` with their licences,
+  taken from the official [google/fonts](https://github.com/google/fonts)
+  repository at commit `ddf386ba1b9fbc6b2c818f1ddcd9148f54ced94b`
+  (`ofl/shrikhand`, `ofl/varelaround`). They are part of the source tree,
+  so a clean clone needs nothing extra.
 - [lucide](https://lucide.dev) icons (ISC), embedded as SVG paths in
   `plugin/ui/core/LucideIcons.h`.
 

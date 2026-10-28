@@ -1,5 +1,7 @@
 #include "KnobFace.h"
 
+#include "core/Ether.h"
+
 #include <array>
 #include <cmath>
 #include <utility>
@@ -145,6 +147,14 @@ void drawKnobFace(juce::Graphics& g, juce::Rectangle<float> box, float angleDeg,
   const auto& layers = staticLayers(cache->entries, box.getWidth(), pixelScale, tone);
 
   blit(g, layers.base, box, pixelScale);
+
+  if (ether::active()) {
+    // Ether: the face, then concentric rainbow rings whose sweep follows
+    // the value, with a glowing bead for the pointer.
+    blit(g, layers.face, box, pixelScale);
+    ether::rainbowKnob(g, box, angleDeg, arcFromDeg);
+    return;
+  }
 
   // Value arc from the zero reference out to the pointer. Endpoints are
   // ordered ascending so one clockwise sweep serves both a centred knob

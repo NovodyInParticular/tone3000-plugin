@@ -1,5 +1,6 @@
 #include "Fonts.h"
 
+#include "Theme.h"
 #include "UiBinaryData.h"
 
 namespace t3k::ui {
@@ -51,10 +52,30 @@ juce::Typeface::Ptr robotoMono(Fonts::Cache& cache, bool bold) {
 }  // namespace
 
 juce::Font Fonts::sans(float px, bool bold, bool italic) {
+  if (theme::kStyle.roundText) return round(px).withStyle(italic ? juce::Font::italic : juce::Font::plain);
   const int style = (bold ? juce::Font::bold : 0) | (italic ? juce::Font::italic : 0);
   if (haveArial()) return juce::Font(juce::FontOptions("Arial", px, style).withPointHeight(px));
   Hold cache;
   return juce::Font(juce::FontOptions(arimo(*cache, bold, italic)).withPointHeight(px));
+}
+
+juce::Font Fonts::display(float px) {
+  Hold cache;
+  return juce::Font(juce::FontOptions(lazily(cache->shrikhand, UiBinaryData::ShrikhandRegular_ttf,
+                                             UiBinaryData::ShrikhandRegular_ttfSize))
+                        .withPointHeight(px));
+}
+
+juce::Font Fonts::round(float px) {
+  Hold cache;
+  return juce::Font(juce::FontOptions(lazily(cache->varelaRound, UiBinaryData::VarelaRoundRegular_ttf,
+                                             UiBinaryData::VarelaRoundRegular_ttfSize))
+                        .withPointHeight(px));
+}
+
+juce::Font Fonts::title(float px, bool bold) {
+  if (theme::kStyle.displayTitles) return display(px + 1.0f);
+  return theme::kStyle.monoLabels ? mono(px - 1, bold) : sans(px, bold);
 }
 
 juce::Font Fonts::mono(float px, bool bold) {

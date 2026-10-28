@@ -1,5 +1,6 @@
 #include "GlitchDeckPanel.h"
 
+#include "core/Ether.h"
 #include "core/Fonts.h"
 #include "core/KnobScale.h"
 #include "core/Paint.h"
@@ -68,6 +69,11 @@ int ChoiceCycleButton::index() const {
 
 void ChoiceCycleButton::paintButton(juce::Graphics& g, bool highlighted, bool) {
   const auto box = getLocalBounds().toFloat();
+  if (ether::active()) {
+    ether::pill(g, box.reduced(0.5f), false, highlighted);
+    paint::capText(g, names_[static_cast<size_t>(index())], box, Fonts::round(11), 11, theme::kMuted);
+    return;
+  }
   if (highlighted) paint::fill(g, box, theme::kIconBoxRadius, theme::kHighlight);
   paint::border(g, box, theme::kIconBoxRadius, theme::kBorder);
   paint::capText(g, names_[static_cast<size_t>(index())], box, Fonts::mono(11), 11, theme::kMuted);

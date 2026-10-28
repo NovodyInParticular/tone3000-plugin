@@ -170,6 +170,11 @@ std::vector<Phase> phases() {
   list.push_back({"rig-minimal", "rig view playing, Minimal skin: no animation, flat drawing", "rig-minimal"});
   list.push_back({"rig-dry", "rig view playing, Neural skin, with the dry input traced under the output", "rig-neural-dry"});
   list.push_back({"rig-fx", "rig view playing, Neural skin, all three time effects on (live pictures)", "rig-neural-fx"});
+  list.push_back({"rig-ether-0", "rig-fx in the Ether skin with both inserts, Trip Intensity 0 (static)",
+                  "rig-ether-trip0"});
+  list.push_back({"rig-ether-2", "the same at the default Trip Intensity (Moderate)", "rig-ether"});
+  list.push_back({"rig-ether-4", "the same at the maximum Trip Intensity", "rig-ether-trip4"});
+  list.push_back({"rig-ether-reduced", "the Ether rig with \"Reduce animations\" on", "rig-ether-reduced"});
   list.push_back({"rig-reduced", "rig-fx with \"Reduce animations\" on: nothing moves but the meters and analyser",
                   "rig-neural-reduced"});
   list.push_back({"rig-tuner", "rig view playing with the tuner in the analyser's place", "rig-neural-tuner", true,

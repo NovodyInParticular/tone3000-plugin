@@ -92,6 +92,7 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
       openSkins_("Open skins folder", FormButton::text(form::kBodyPx, false, theme::kLinkBlue)),
       openSkinsBox_(openSkins_, static_cast<float>(openSkins_.preferredHeight())),
       spectrumLabel_("Rig view analyser", form::kBodyPx, false, theme::kMuted),
+      tripLabel_("Trip Intensity", form::kBodyPx, false, theme::kMuted),
       reduceAnimations_("Reduce animations",
                         "Turns off cable pulses, scrolling names and animated visuals on every skin. "
                         "Saves CPU on slower machines."),
@@ -197,6 +198,18 @@ PluginSettingsPage::PluginSettingsPage(Services& services)
                               {"off", "Off", {}}});
     spectrumRate_.setValue(services_.prefs.get(UiPrefs::kSpectrumRate, "normal"));
     spectrumRate_.onChange = [this](const juce::String& v) { services_.prefs.set(UiPrefs::kSpectrumRate, v); };
+    if (theme::kStyle.psychedelic) {
+      // How much the light show moves; "Reduce animations" still wins.
+      skin_.content().add(tripLabel_);
+      skin_.content().add(tripSelect_);
+      tripSelect_.setOptions({{"0", "Still (no motion)", {}},
+                              {"1", "Low", {}},
+                              {"2", "Moderate", {}},
+                              {"3", "High", {}},
+                              {"4", "Full trip", {}}});
+      tripSelect_.setValue(services_.prefs.get(UiPrefs::kTripIntensity, "2"));
+      tripSelect_.onChange = [this](const juce::String& v) { services_.prefs.set(UiPrefs::kTripIntensity, v); };
+    }
     skin_.content().add(openSkinsBox_);
     openSkins_.onClick = [] {
       const auto dir = skin::userSkinsDir();

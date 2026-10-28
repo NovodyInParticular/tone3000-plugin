@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
+#include <string>
 
+#include "core/Ether.h"
 #include "core/Fonts.h"
 #include "core/KnobScale.h"
 #include "core/Paint.h"
@@ -23,6 +26,7 @@ constexpr int kPad = 24;
 constexpr int kGap = 26;          // between modules (the cable)
 constexpr int kSpectrumHeight = 116;
 constexpr int kGlitchMs = 220;
+constexpr int kLandingMs = 700;  // the Ether skin's ripple when a tone lands
 // The Glitch Engine card's flicker when a glitch fires: at most one start
 // per this many ms (under 3 a second, the photosensitivity limit).
 constexpr juce::uint32 kEventFlickerGapMs = 340;
@@ -96,6 +100,10 @@ juce::Rectangle<float> footswitchBox() {
 
 void footswitch(juce::Graphics& g, bool on) {
   const auto fs = footswitchBox();
+  if (ether::active()) {
+    ether::lavaSwitch(g, fs, on, 0.1f);
+    return;
+  }
   if (on) {
     if (theme::kStyle.glow > 0.0f) {
       g.setColour(theme::kBrandYellow.withAlpha(0.22f * theme::kStyle.glow));
@@ -134,6 +142,10 @@ void sizeBadge(juce::Graphics& g, juce::Point<float> at, bool full) {
 // `lit` (0..1) tints the cells with the accent: a dual-IR cab lights each
 // half by its share of the blend.
 void grille(juce::Graphics& g, juce::Rectangle<float> area, float lit = 0.0f) {
+  if (ether::active()) {
+    ether::kaleidoscope(g, area, lit, area.getX() * 0.01f);
+    return;
+  }
   g.setColour(theme::kBlack.withAlpha(0.6f));
   g.fillRoundedRectangle(area, 4.0f);
   const auto colour = theme::kGray.withAlpha(0.45f).interpolatedWith(theme::kBrandYellow.withAlpha(0.8f), lit);
@@ -214,8 +226,8 @@ public:
       marqueeX_ = 0.0f;
       if (hoverSince_ != 0) hoverSince_ = juce::Time::getMillisecondCounter();
     }
-    if (newTone && theme::kStyle.glitchOnLoad && theme::animate())
-      glitchUntil_ = juce::Time::getMillisecondCounter() + kGlitchMs;
+    if (newTone && theme::kStyle.glitchOnLoad && theme::animate() && (!ether::active() || ether::motion()))
+      glitchUntil_ = juce::Time::getMillisecondCounter() + (ether::active() ? kLandingMs : kGlitchMs);
     repaint();
   }
   const std::string& blockId() const { return item_.blockId; }
@@ -562,6 +574,17 @@ public:
       draw(g);
       return;
     }
+    if (ether::active()) {
+      // Ether: no slicing. A tone landing sends a ripple across the card;
+      // the glitch card's own picture shows its glitches.
+      draw(g);
+      if (!isInsert()) {
+        const float age = 1.0f - static_cast<float>(glitchUntil_ - juce::Time::getMillisecondCounter()) / kLandingMs;
+        g.addTransform(juce::AffineTransform::scale(scale()));
+        ether::landingRipple(g, nominalBox(), age);
+      }
+      return;
+    }
     // Load flicker: the module in horizontal slices, each nudged sideways.
     juce::Random rng(static_cast<juce::int64>(juce::Time::getMillisecondCounter() / 30));
     const int slices = 7;
@@ -771,6 +794,17 @@ private:
     const auto pic = area.withTrimmedTop(15).reduced(6, 3);
     const auto colour = on ? theme::kBrandYellow : theme::kGray.withAlpha(0.45f);
     const float t = on && theme::animate() ? fxTime_ : 0.0f;
+    if (ether::active()) {
+      // Ether: a waving rainbow spiral, rippling circles, a dissolving nebula.
+      if (row == 0)
+        ether::spiralWave(g, pic, on, juce::jlimit(0.2f, 3.0f, paramValue("fxModRate", 0.8f)),
+                          0.25f + 0.75f * paramNorm("fxModDepth", 0.5f));
+      else if (row == 1)
+        ether::ripples(g, pic, on, juce::jlimit(0.1f, 0.95f, paramNorm("fxDelayFeedback", 0.37f)));
+      else
+        ether::nebula(g, pic, on, paramNorm("fxReverbDecay", 0.4f));
+      return;
+    }
     juce::Path path;
     switch (row) {
       case 0: {  // MOD: an LFO line, its speed the Rate (slowed past 3 Hz to stay readable), its swing the Depth
@@ -863,8 +897,13 @@ private:
   void dualCab(juce::Graphics& g) {
     const auto area = dualGrille();
     const float b = blend();
-    grille(g, area.withWidth(area.getWidth() / 2 - 2), 0.15f + 0.6f * (1.0f - b));
-    grille(g, area.withTrimmedLeft(area.getWidth() / 2 + 2), 0.15f + 0.6f * b);
+    if (ether::active()) {
+      // Two kaleidoscopes melting into each other at the blend point.
+      ether::dualKaleidoscope(g, area, b);
+    } else {
+      grille(g, area.withWidth(area.getWidth() / 2 - 2), 0.15f + 0.6f * (1.0f - b));
+      grille(g, area.withTrimmedLeft(area.getWidth() / 2 + 2), 0.15f + 0.6f * b);
+    }
     g.setFont(label(10, true));
     for (const auto& [text, half] : {std::pair{"A", 0}, std::pair{"B", 1}}) {
       const auto tag = juce::Rectangle<float>(14, 14).withPosition(half == 0 ? area.getX() + 4 : area.getRight() - 18, area.getY() + 4);
@@ -1009,6 +1048,13 @@ private:
   float outLevel() const { return dbToUnit(services_.meters.level(MeterStore::blockOutId(item_.blockId))); }
 
   void body(juce::Graphics& g, juce::Rectangle<float> box, bool lit) {
+    if (ether::active()) {
+      // A liquid card with a swirling rainbow border, its colours offset
+      // per module so neighbours don't match.
+      ether::liquidCard(g, box, 10.0f, lit, static_cast<float>(std::hash<std::string>{}(item_.blockId) % 97) / 97.0f +
+                                                  static_cast<float>(kind_) * 0.13f);
+      return;
+    }
     g.setColour(theme::kSurfaceRaised);
     g.fillRoundedRectangle(box, 10.0f);
     if (lit && theme::kStyle.glow > 0.0f) {
@@ -1022,12 +1068,12 @@ private:
   void title(juce::Graphics& g) {
     const auto spot = titleSpot();
     g.setColour(item_.params.enabled ? theme::kWhite : theme::kGray);
-    g.setFont(label(12, true));
+    g.setFont(Fonts::title(12));
     if (hoverSince_ != 0 && titleCut_ && theme::animate() && !bypassed()) {
       // Marquee: one line, slid left inside the title area.
       juce::Graphics::ScopedSaveState save(g);
       g.reduceClipRegion(spot.area.toNearestInt());
-      const float w = Fonts::width(label(12, true), titleText()) + 2.0f;
+      const float w = Fonts::width(Fonts::title(12), titleText()) + 2.0f;
       g.drawText(titleText(), juce::Rectangle<float>(spot.area.getX() + 4.0f - marqueeX_, spot.area.getY(), w, spot.area.getHeight()),
                  juce::Justification::centredLeft, false);
       return;
@@ -1058,8 +1104,14 @@ private:
         body(g, box, enabled && item_.loaded);
         // Name plate.
         auto plate = box.reduced(10).removeFromTop(34);
-        g.setColour(theme::kBlack.withAlpha(0.55f));
-        g.fillRoundedRectangle(plate, 5.0f);
+        if (ether::active()) {
+          // A mandala radiating behind the capture's name, on a frosted plate.
+          ether::mandala(g, box.reduced(4).withHeight(70), enabled ? outLevel() : 0.0f);
+          ether::frosted(g, plate, 8.0f);
+        } else {
+          g.setColour(theme::kBlack.withAlpha(0.55f));
+          g.fillRoundedRectangle(plate, 5.0f);
+        }
         title(g);
         arrows(g);
         // Knobs.
@@ -1090,12 +1142,19 @@ private:
             else trace.lineTo(x, y);
           }
         }
-        if (theme::kStyle.glow > 0.0f) {
-          g.setColour(theme::kBrandYellow.withAlpha(0.2f * theme::kStyle.glow));
-          g.strokePath(trace, juce::PathStrokeType(4.0f));
+        if (ether::active()) {
+          // A shimmering rainbow ribbon.
+          const float phase = static_cast<float>(ether::clock() * 0.15);
+          ether::rainbowStroke(g, trace, 4.0f, phase, 0.18f);
+          ether::rainbowStroke(g, trace, 1.6f, phase, 0.5f + 0.5f * amp);
+        } else {
+          if (theme::kStyle.glow > 0.0f) {
+            g.setColour(theme::kBrandYellow.withAlpha(0.2f * theme::kStyle.glow));
+            g.strokePath(trace, juce::PathStrokeType(4.0f));
+          }
+          g.setColour(theme::kBrandYellow.withAlpha(0.4f + 0.6f * amp));
+          g.strokePath(trace, juce::PathStrokeType(1.4f));
         }
-        g.setColour(theme::kBrandYellow.withAlpha(0.4f + 0.6f * amp));
-        g.strokePath(trace, juce::PathStrokeType(1.4f));
         led(g, {box.getRight() - 14, box.getY() + 14}, enabled);
         break;
       }
@@ -1123,8 +1182,8 @@ private:
       case Kind::fx: {
         body(g, box, fxBits_ > 0);
         g.setColour(theme::kWhite);
-        g.setFont(label(12, true));
-        g.drawText("TIME FX", box.withHeight(30), juce::Justification::centred, false);
+        g.setFont(Fonts::title(12));
+        g.drawText(theme::kStyle.displayTitles ? "Time FX" : "TIME FX", box.withHeight(30), juce::Justification::centred, false);
         for (int row = 0; row < 3; ++row) fxRow(g, row);
         break;
       }
@@ -1200,7 +1259,8 @@ private:
         eventAt_ = now;
         // Neural-style skins flicker the card when a glitch fires, never
         // more than kEventFlickerGapMs apart.
-        if (theme::kStyle.glitchOnLoad && theme::animate() && now - lastFlickerAt_ >= kEventFlickerGapMs) {
+        if (theme::kStyle.glitchOnLoad && theme::animate() && (!ether::active() || ether::motion()) &&
+            now - lastFlickerAt_ >= kEventFlickerGapMs) {
           lastFlickerAt_ = now;
           glitchUntil_ = now + kGlitchMs;
         }
@@ -1208,6 +1268,7 @@ private:
       lastEvents_ = a.events;
     }
     next.event = a.event;
+    next.split = glitching();
     next.eventAge = eventAt_ == 0 ? 1.0f : static_cast<float>(now - eventAt_) / 1000.0f;
     const bool moving = next.on && theme::animate() && isShowing();
     if (moving) {
@@ -1425,6 +1486,10 @@ void RigView::tick() {
   const float dt = lastTickMs_ == 0 ? 0.0f : juce::jmin(0.1f, static_cast<float>(now - lastTickMs_) / 1000.0f);
   lastTickMs_ = now;
   if (!theme::animate()) return;
+  // Ether's cables wave and flow: their whole ribbons repaint with the
+  // pulses (15 fps).
+  if (ether::motion() && !pulseFrame_)
+    for (const auto& c : cables_) repaint(cableArea(c).expanded(0, 6));
   // Pulses move at half the UI rate: each repainted spot costs a blit of
   // its own, and small dots read smoothly at 15 fps.
   pulseDt_ += dt;
@@ -1775,6 +1840,13 @@ void RigView::paint(juce::Graphics& g) {
     const float y = static_cast<float>(a.getCentreY());
     const juce::Line<float> line(static_cast<float>(a.getRight()), y, static_cast<float>(b.getX()), y);
     const bool live = cableLive(c);
+    if (ether::active()) {
+      // Flowing rainbow ribbons, a soft light travelling along live ones.
+      const float level = cableLevel(c);
+      c.drawn = pulses && live && level >= kPulseFloor;
+      ether::cable(g, line, live, c.drawn ? c.phase : -1.0f, level);
+      continue;
+    }
     if (live && theme::kStyle.glow > 0.0f) {
       g.setColour(theme::kBrandYellow.withAlpha(0.15f * theme::kStyle.glow));
       g.drawLine(line, 5.0f);

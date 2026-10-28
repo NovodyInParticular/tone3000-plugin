@@ -1,5 +1,7 @@
 #include "OutputSpectrum.h"
 
+#include "core/Ether.h"
+
 #include "core/Fonts.h"
 #include "core/Paint.h"
 #include "core/Theme.h"
@@ -176,6 +178,12 @@ void OutputSpectrum::paint(juce::Graphics& g) {
   fill.lineTo(plot.getRight(), plot.getBottom());
   fill.lineTo(plot.getX(), plot.getBottom());
   fill.closeSubPath();
+  if (ether::active()) {
+    // Ether: a rainbow liquid with a mirrored reflection and a neon edge.
+    ether::spectrumFill(g, fill, line, plot);
+    ghost();
+    return;
+  }
   g.setGradientFill(juce::ColourGradient::vertical(theme::kBrandYellow.withAlpha(0.28f), plot.getY(),
                                                    theme::kBrandYellow.withAlpha(0.0f), plot.getBottom()));
   g.fillPath(fill);

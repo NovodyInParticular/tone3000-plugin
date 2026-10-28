@@ -52,6 +52,9 @@ private:
   FormBox openSkinsBox_;
   FormLabel spectrumLabel_;
   SelectField spectrumRate_{"Rig view analyser"};
+  // The Ether skin's Trip Intensity (only while a psychedelic skin is on).
+  FormLabel tripLabel_;
+  SelectField tripSelect_{"Trip Intensity"};
   ToggleRow reduceAnimations_;
 
   ToggleRow infoBar_;

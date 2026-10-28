@@ -22,12 +22,20 @@ struct Fonts {
   struct Cache {
     juce::Typeface::Ptr arimo[4];      // [bold + 2 * italic]
     juce::Typeface::Ptr robotoMono[2]; // [bold]
+    juce::Typeface::Ptr shrikhand, varelaRound;
   };
   using Hold = juce::SharedResourcePointer<Cache>;
 
   // Arial where the OS has it, else the embedded Arimo (weights 600/700 →
   // Bold; Arial has no medium).
+  // (A skin with "textFont": "round" gets Varela Round here instead.)
   static juce::Font sans(float px, bool bold = false, bool italic = false);
+  // The Ether skin's faces: Shrikhand (retro display, headings and slot
+  // titles) and Varela Round (rounded, readable text). Both one weight.
+  static juce::Font display(float px);
+  static juce::Font round(float px);
+  // A heading / slot title: the display face when the skin asks for it.
+  static juce::Font title(float px, bool bold = true);
   // Roboto Mono 400/700, embedded.
   static juce::Font mono(float px, bool bold = false);
 

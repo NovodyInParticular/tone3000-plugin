@@ -18,7 +18,7 @@ Each skin is a folder holding a `skin.json` manifest:
 **Settings → Plugin → Skin → Open skins folder** creates and opens it. The
 folder name is the skin's id. Reopen Settings to see a new skin in the list.
 A folder named like a built-in (`neural`, `minimal`, `vintage`, `classic`,
-`burningchurch`) is ignored.
+`burningchurch`, `ether`) is ignored.
 
 The built-ins are in `plugin/ui/skins/` and are good starting points: copy
 one, rename the folder, edit.
@@ -84,6 +84,22 @@ if it was the active skin, the default (Neural) is used instead.
 | `animations`   | bool   | Rig-view pulses (off: everything static) |
 | `glitchOnLoad` | bool   | A short flicker on a module when a new tone lands |
 | `grille`       | `"photo"` / `"dots"` / `"hex"` | How the rig view draws a cab |
+| `psychedelic`  | bool   | The Ether light show: drifting oil-blob backdrop, liquid cards, rainbow knobs and cables, kaleidoscope cabs. Adds a **Trip Intensity** setting |
+| `titleFont`    | `"display"` | Headings and slot titles in the bundled retro display face (Shrikhand) |
+| `textFont`     | `"round"`   | Body text and labels in the bundled rounded face (Varela Round) |
+
+### The Ether skin and Trip Intensity
+
+The built-in **Ether** skin turns all three on. Its motion follows
+**Settings → Plugin → Skin → Trip Intensity** (Still, Low, Moderate, High,
+Full trip; Moderate by default). It goes fully static with Trip Intensity
+at Still, with **Reduce animations** on, when the operating system asks for
+reduced motion (macOS Accessibility "Reduce motion", Windows "Show
+animations" off, GNOME / GTK animations off), and on its own if the UI's
+frames take too long (then until the skin is re-applied or the editor
+reopens). Nothing in it flashes more than 3 times a second; colours drift
+slowly (one turn of the palette a minute). The backdrop moves at 10 frames
+a second; it pauses while the window is hidden or minimised.
 
 ### logo
 

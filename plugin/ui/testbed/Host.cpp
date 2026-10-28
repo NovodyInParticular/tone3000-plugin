@@ -1,5 +1,6 @@
 #include "Host.h"
 
+#include "core/Ether.h"
 #include "core/Skin.h"
 
 #include "core/Design.h"
@@ -83,6 +84,7 @@ ScaledHost::ScaledHost(Backend& backend, const Scenario& scenario, const juce::v
   // (upstream) look, so their reference captures stay comparable.
   skin::apply(scenario.data.getProperty("skin", "classic").toString());
   theme::kReduceMotion = prefs.getBool(UiPrefs::kReduceAnimations, false);  // as NativeEditor does
+  ether::setTrip(static_cast<float>(prefs.get(UiPrefs::kTripIntensity, "2").getIntValue()) / 4.0f);
   root = std::make_unique<PluginRoot>(services);
   addAndMakeVisible(*root);
   setVisible(true);  // offscreen captures have no window to make us visible

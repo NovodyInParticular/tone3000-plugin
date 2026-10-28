@@ -27,6 +27,7 @@ const std::vector<BuiltIn>& builtIns() {
       {"classic", UiBinaryData::skin_classic_json, UiBinaryData::skin_classic_jsonSize},
       {"burningchurch", UiBinaryData::skin_burningchurch_json, UiBinaryData::skin_burningchurch_jsonSize,
        UiBinaryData::skin_burningchurch_bg_svg, UiBinaryData::skin_burningchurch_bg_svgSize},
+      {"ether", UiBinaryData::skin_ether_json, UiBinaryData::skin_ether_jsonSize},
   };
   return list;
 }
@@ -141,6 +142,9 @@ bool applyManifest(const juce::String& json, const juce::File& dir, const juce::
     if (parseColour(st["knobFace"], c)) kStyle.knobFace = c;
     kStyle.background = kBlack;
     if (parseColour(st["background"], c)) kStyle.background = c;
+    kStyle.psychedelic = st["psychedelic"].isBool() && static_cast<bool>(st["psychedelic"]);
+    kStyle.displayTitles = st["titleFont"].toString() == "display";
+    kStyle.roundText = st["textFont"].toString() == "round";
   } else {
     kStyle.background = kBlack;
   }

@@ -110,3 +110,23 @@ A second way to see the chain: as a row of gear instead of tone artwork.
   are off by default.
 - Not affiliated with or supported by TONE3000, so please don't send
   TONE3000 support requests about this build.
+
+## Ether skin
+
+A psychedelic built-in skin (Settings → Plugin → Skin → Ether): a 60s/70s
+liquid light show over deep cosmic indigo. Drifting oil-projector colour and
+a starfield behind everything, liquid cards with swirling rainbow borders,
+lava-lamp footswitches, a mandala behind the amp's name and its waveform as
+a rainbow ribbon, cabs as turning kaleidoscopes (two melting into each other
+with a dual IR), the Time FX unit as ripples, a nebula and a rainbow spiral,
+the Glitch Engine with an RGB split and pixel melt when glitches fire and a
+crystal freeze, Abyss Pitch as a vortex, rainbow knobs, glowing pill buttons,
+a rainbow liquid spectrum and flowing rainbow cables. The music makes it
+breathe. Titles in Shrikhand, text in Varela Round (both open-licensed, and
+bundled).
+
+**Trip Intensity** (Settings, under the skin) sets how much it moves, from
+fully still to full trip. It goes static with Reduce animations, with the
+system's reduced-motion setting, or when frames get slow; nothing flashes
+more than 3 times a second.
+

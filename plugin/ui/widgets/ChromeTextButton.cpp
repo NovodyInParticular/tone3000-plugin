@@ -1,5 +1,7 @@
 #include "ChromeTextButton.h"
 
+#include "core/Ether.h"
+
 #include <cmath>
 
 #include "core/Fonts.h"
@@ -29,9 +31,16 @@ void ChromeTextButton::setOpen(bool open) {
   repaint();
 }
 
-void ChromeTextButton::paintButton(juce::Graphics& g, bool, bool) {
+void ChromeTextButton::paintButton(juce::Graphics& g, bool highlighted, bool) {
   const auto box = getLocalBounds().toFloat();
   const float alpha = isEnabled() ? 1.0f : theme::kDisabledOpacity;
+  if (ether::active()) {
+    // Ether: a soft pill whose inner glow blooms while armed or open.
+    ether::pill(g, box.reduced(0.5f), open_ || armed_, highlighted);
+    paint::capText(g, label_, box, Fonts::round(kFontPx), kFontPx,
+                   (open_ || armed_ ? theme::kWhite : theme::kMuted).withMultipliedAlpha(alpha));
+    return;
+  }
   juce::Colour fg = theme::kMuted;
   if (open_ || armed_) {
     fg = theme::kBlack;

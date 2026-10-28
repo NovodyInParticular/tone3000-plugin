@@ -70,6 +70,8 @@ public:
   static constexpr const char* kSpectrumRate = "t3k.spectrumRate";
   // "true": no pulses, marquees or animated visuals on any skin (low-power machines).
   static constexpr const char* kReduceAnimations = "t3k.reduceAnimations";
+  // The Ether skin's Trip Intensity, "0".."4" (still .. full motion).
+  static constexpr const char* kTripIntensity = "t3k.tripIntensity";
   // "true": the rig view analyser also traces the dry input.
   static constexpr const char* kSpectrumInputTrace = "t3k.spectrumInputTrace";
   static constexpr const char* kShowPresetPcNumbers = "t3k.showPresetPcNumbers";
