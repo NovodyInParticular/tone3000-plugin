@@ -12,6 +12,7 @@
 //     effect lands on defaults, presets, latency reported only while on,
 //     and moving / reordering the inserts without a click.
 #include "AbyssPitch.h"
+#include "GlitchFx.h"
 #include "Processor.h"
 #include "test_helpers.h"
 
@@ -369,4 +370,56 @@ TEST(ProcessorTest, InsertsMoveAndReorderWithoutAClick) {
   // Every move dips through silence instead of splicing two different
   // signals, so moving adds no step bigger than the effects already make.
   EXPECT_LE(moving, still * 1.25f + 0.005f) << "still " << still;
+}
+
+// CPU benchmark (not part of the suite): each insert's cost as a percent
+// of one core in real time, 48 kHz, 128-sample blocks, stereo.
+//   DspTests --gtest_also_run_disabled_tests --gtest_filter='*InsertCpu*'
+TEST(InsertBench, DISABLED_InsertCpu) {
+  constexpr int block = 128;
+  const int seconds = 10;
+  const auto sine = makeSine(block * 375, 110.0, 0.3f);  // one second
+  const auto measure = [&](const char* name, auto&& process) {
+    juce::AudioBuffer<float> buf(2, block);
+    const auto start = juce::Time::getHighResolutionTicks();
+    for (int s = 0; s < seconds; ++s)
+      for (int b = 0; b < 375; ++b) {
+        for (int ch = 0; ch < 2; ++ch) buf.copyFrom(ch, 0, sine.data() + b * block, block);
+        process(buf);
+      }
+    const double elapsed = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - start);
+    std::printf("%-44s %6.2f %% of one core\n", name, 100.0 * elapsed / seconds);
+  };
+  {
+    glitchfx::Engine g;
+    g.prepare(kFs, block);
+    measure("Glitch off", [&](auto& b) { g.process(b, {}, {}); });
+    glitchfx::Params p;
+    p.on = true;
+    measure("Glitch on, neutral", [&](auto& b) { g.process(b, p, {}); });
+    p.bits = 4.0f;
+    p.rateHz = 6000.0f;
+    p.chance = 0.6f;
+    p.intensity = 1.0f;
+    p.freeze = true;
+    glitchfx::Transport t;
+    t.playing = true;
+    measure("Glitch on, crush + random + freeze", [&](auto& b) {
+      g.process(b, p, t);
+      t.ppq += block * 2.0 / kFs;
+    });
+  }
+  {
+    abyss::Engine a;
+    a.prepare(kFs, block);
+    measure("Abyss off", [&](auto& b) { a.process(b, {}); });
+    abyss::Params p;
+    p.on = true;  // the default: -1 octave
+    measure("Abyss on, default (-1 oct, Tight)", [&](auto& b) { a.process(b, p); });
+    p.subTwoLevel = p.upLevel = p.shiftLevel = 0.8f;
+    p.detuneCents = 30.0f;
+    measure("Abyss on, all five voices (Tight)", [&](auto& b) { a.process(b, p); });
+    p.tracking = 1;
+    measure("Abyss on, all five voices (Smooth)", [&](auto& b) { a.process(b, p); });
+  }
 }
