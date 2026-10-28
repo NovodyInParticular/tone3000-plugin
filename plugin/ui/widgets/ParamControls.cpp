@@ -48,4 +48,26 @@ ParamTextToggle::ParamTextToggle(Backend& backend, const juce::String& paramId, 
   };
 }
 
+ParamHoldToggle::ParamHoldToggle(Backend& backend, const juce::String& paramId, const juce::String& modeId,
+                                 juce::String label, help::Key help)
+    : ChromeTextButton(std::move(label), help), binding_(backend, paramId), mode_(backend, modeId) {
+  setArmed(binding_.boolValue());
+  binding_.onChange = [this] { setArmed(binding_.boolValue()); };
+  onClick = [this] {
+    if (momentary()) return;  // the press and release did it
+    binding_.set(!binding_.boolValue());
+    setArmed(binding_.boolValue());
+  };
+}
+
+void ParamHoldToggle::buttonStateChanged() {
+  ChromeTextButton::buttonStateChanged();
+  if (!momentary()) return;
+  const bool down = getState() == juce::Button::buttonDown;
+  if (down != binding_.boolValue()) {
+    binding_.set(down);
+    setArmed(down);
+  }
+}
+
 }  // namespace t3k::ui

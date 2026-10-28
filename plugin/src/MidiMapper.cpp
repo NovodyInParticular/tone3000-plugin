@@ -82,17 +82,33 @@ void MidiMapper::processMidi(const juce::MidiBuffer& midi) {
       continue;
     }
 
-    if (!msg.isController() && !msg.isNoteOn())
+    // Note-offs only matter to hold targets (the release).
+    const bool noteOff = msg.isNoteOff();
+    if (!msg.isController() && !msg.isNoteOn() && !noteOff)
       continue;
     const auto source = msg.isController() ? Source::cc : Source::note;
     const int number = msg.isController() ? msg.getControllerNumber() : msg.getNoteNumber();
     for (auto& mapping : mappings)
-      if (mapping.source == source && mapping.number == number)
+      if (mapping.source == source && mapping.number == number && (!noteOff || mapping.kind == Kind::hold))
         applyEvent(mapping, msg);
   }
 }
 
+const char* MidiMapper::holdParameterFor(const juce::String& targetId) {
+  if (targetId == "glitchStutterHold") return "glitchStutter";
+  if (targetId == "glitchFreezeHold") return "glitchFreeze";
+  return nullptr;
+}
+
 void MidiMapper::applyEvent(Mapping& mapping, const juce::MidiMessage& msg) {
+  if (mapping.kind == Kind::hold) {
+    // Momentary: the parameter follows the control's held state.
+    const bool held = msg.isController() ? msg.getControllerValue() >= 64 : msg.isNoteOn();
+    auto& param = *mapping.param;
+    if ((param.getValue() >= 0.5f) != held)
+      param.setValueNotifyingHost(held ? 1.0f : 0.0f);
+    return;
+  }
   if (mapping.toggle) {
     // Note-ons always fire. For CCs, detect a *press*: any value ≥ 64, or a
     // value < 64 that doesn't follow a ≥ 64 one from this control. A
@@ -142,6 +158,7 @@ void MidiMapper::applyEvent(Mapping& mapping, const juce::MidiMessage& msg) {
         param.setValueNotifyingHost(param.getValue() < 0.5f ? 1.0f : 0.0f);
         return;
       }
+      case Kind::hold: return;  // handled above
     }
     return;
   }
@@ -239,13 +256,17 @@ MidiMapper::Mapping MidiMapper::makeMapping(const juce::String& targetId, Source
   const int presetDelta = targetId == kPresetNextTarget   ? 1
                           : targetId == kPresetPrevTarget ? -1
                                                           : step.delta;
-  const Kind kind = step.index >= 0             ? Kind::blockStep
+  const char* holdParam = holdParameterFor(targetId);
+  const Kind kind = holdParam != nullptr        ? Kind::hold
+                    : step.index >= 0           ? Kind::blockStep
                     : presetDelta != 0          ? Kind::presetStep
                     : targetId == kStereoTarget ? Kind::stereoMode
                     : block.index >= 0          ? Kind::blockPower
                                                 : Kind::parameter;
-  auto* param = kind == Kind::parameter ? parameters.getParameter(targetId) : nullptr;
-  jassert(kind != Kind::parameter || param != nullptr);  // callers validate the id first
+  auto* param = kind == Kind::parameter ? parameters.getParameter(targetId)
+                : kind == Kind::hold      ? parameters.getParameter(holdParam)
+                                          : nullptr;
+  jassert((kind != Kind::parameter && kind != Kind::hold) || param != nullptr);  // callers validate the id first
   const bool toggle = kind != Kind::parameter || source == Source::note ||
                       (param != nullptr && param->isBoolean());
   return {targetId, kind, param, block.index, block.right, presetDelta, source, number, toggle};

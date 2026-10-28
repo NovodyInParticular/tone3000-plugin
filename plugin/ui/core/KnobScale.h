@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <functional>
+#include <vector>
 
 #include "Labels.h"
 
@@ -222,6 +223,71 @@ inline const KnobScale& fxDivision() {
     c.editText = [index](double n) { return juce::String(index(n)); };
     return c;
   }();
+  return s;
+}
+
+// A choice parameter as detents: one name per step.
+inline KnobScale choice(std::vector<juce::String> names) {
+  KnobScale c;
+  const int count = static_cast<int>(names.size());
+  const auto index = [count](double n) { return juce::jlimit(0, count - 1, juce::roundToInt(n * (count - 1))); };
+  c.toDisplay = [index](double n) { return index(n); };
+  c.fromDisplay = [count](double d) { return juce::jlimit(0.0, 1.0, d / std::max(1, count - 1)); };
+  c.format = [index, names](double n) { return names[static_cast<size_t>(index(n))]; };
+  c.editText = [index](double n) { return juce::String(index(n)); };
+  return c;
+}
+
+// Glitch Engine (GlitchFx.h / Processor.cpp ranges).
+inline const KnobScale& glitchRate() {
+  static const KnobScale s = choice({"1/4", "1/8", "1/16", "1/32", "1/64", "1/4T", "1/8T", "1/16T", "1/32T"});
+  return s;
+}
+inline const KnobScale& glitchLength() {
+  static const KnobScale s = linear(10, 100, "%", 0);
+  return s;
+}
+inline const KnobScale& glitchBits() {
+  static const KnobScale s = make([](double n) { return 1.0 + n * 15.0; }, [](double d) { return (d - 1.0) / 15.0; },
+                                  "bit", 1);
+  return s;
+}
+inline const KnobScale& glitchSampleRate() {
+  static const KnobScale s = logScale(
+      400.0, 48000.0,
+      [](double hz) {
+        if (hz >= 47999.0) return juce::String("Off");
+        return hz < 1000.0 ? juce::String(juce::roundToInt(hz)) + " Hz" : labels::toFixed(hz / 1000.0, 1) + " kHz";
+      },
+      [](double hz) { return juce::String(juce::roundToInt(hz)); });
+  return s;
+}
+inline const KnobScale& glitchSeed() {
+  static const KnobScale s = [] {
+    KnobScale c = linear(0, 999, {}, 0);
+    c.format = [](double n) {
+      const int seed = juce::roundToInt(n * 999.0);
+      return seed == 0 ? juce::String("Free") : "#" + juce::String(seed);
+    };
+    return c;
+  }();
+  return s;
+}
+inline const KnobScale& glitchFadeMs() {
+  static const KnobScale s =
+      logScale(5.0, 2000.0,
+               [](double ms) {
+                 return ms < 1000.0 ? juce::String(juce::roundToInt(ms)) + " ms" : labels::toFixed(ms / 1000.0, 2) + " s";
+               },
+               [](double ms) { return juce::String(juce::roundToInt(ms)); });
+  return s;
+}
+inline const KnobScale& insertOutputDb() {
+  static const KnobScale s = linear(-24, 12, "dB", 1);
+  return s;
+}
+inline const KnobScale& tempoBpm() {
+  static const KnobScale s = linear(40, 300, "BPM", 1);
   return s;
 }
 

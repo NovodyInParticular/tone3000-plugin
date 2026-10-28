@@ -46,6 +46,10 @@
  *     footswitches that only ever send low values; a plain ≥ 64 gate would
  *     drop that last kind entirely.
  *   - Note-on on any target → toggle (continuous flips 0 ↔ 1).
+ *   - Hold targets ("glitchStutterHold", "glitchFreezeHold"): momentary.
+ *     They drive the matching boolean parameter while the control is held:
+ *     CC ≥ 64 or note-on sets it, CC < 64 or note-off clears it. Separate
+ *     targets, so one footswitch can latch Freeze and another hold it.
  *   - Program change n → onProgramChange(n), no mapping needed (the
  *     processor loads the nth preset in list order). Only raw-MIDI formats
  *     deliver PC here (Standalone, AU, LV2, CLAP): VST3 strips PC from the
@@ -124,7 +128,10 @@ public:
 
 private:
   enum class Source : int { cc = 0, note = 1 };
-  enum class Kind : int { parameter = 0, blockPower = 1, stereoMode = 2, presetStep = 3, blockStep = 4 };
+  enum class Kind : int { parameter = 0, blockPower = 1, stereoMode = 2, presetStep = 3, blockStep = 4, hold = 5 };
+
+  /** Momentary targets and the boolean parameter each one holds. */
+  static const char* holdParameterFor(const juce::String& targetId);
 
   /** Virtual target id for the chain's stereo on/off (chain state, not an
       APVTS parameter; the UI catalog uses the same id). */
@@ -167,6 +174,7 @@ private:
 
   bool isValidTarget(const juce::String& targetId) const {
     return blockPowerTargetFor(targetId).index >= 0 || blockStepTargetFor(targetId).index >= 0 ||
+           holdParameterFor(targetId) != nullptr ||
            targetId == kStereoTarget ||
            targetId == kPresetPrevTarget || targetId == kPresetNextTarget ||
            parameters.getParameter(targetId) != nullptr;

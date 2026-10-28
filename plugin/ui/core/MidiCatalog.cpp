@@ -48,6 +48,23 @@ const std::vector<MappableTarget>& mappableTargets() {
         {"cloudsSpread", "Clouds Spread", "Clouds", K::continuous},
         {"cloudsFeedback", "Clouds Feedback", "Clouds", K::continuous},
         {"cloudsReverb", "Clouds Reverb", "Clouds", K::continuous},
+        // Stutter and Freeze come twice: the plain target latches (one press
+        // on, the next off), the Hold one is on only while the switch or
+        // note is held (the native mapper resolves the Hold ids itself).
+        {"glitchEnabled", "Glitch Power", "Glitch Engine", K::toggle},
+        {"glitchStutter", "Stutter (latch)", "Glitch Engine", K::toggle},
+        {"glitchStutterHold", "Stutter (hold)", "Glitch Engine", K::toggle},
+        {"glitchFreeze", "Freeze (latch)", "Glitch Engine", K::toggle},
+        {"glitchFreezeHold", "Freeze (hold)", "Glitch Engine", K::toggle},
+        {"glitchStutterRate", "Stutter Rate", "Glitch Engine", K::continuous},
+        {"glitchStutterLength", "Repeat Length", "Glitch Engine", K::continuous},
+        {"glitchBits", "Bit Depth", "Glitch Engine", K::continuous},
+        {"glitchRate", "Sample Rate", "Glitch Engine", K::continuous},
+        {"glitchChance", "Glitch Chance", "Glitch Engine", K::continuous},
+        {"glitchIntensity", "Glitch Intensity", "Glitch Engine", K::continuous},
+        {"glitchFreezeFade", "Freeze Fade", "Glitch Engine", K::continuous},
+        {"glitchMix", "Glitch Mix", "Glitch Engine", K::continuous},
+        {"glitchOutput", "Glitch Output", "Glitch Engine", K::continuous},
         {"toneEqEnabled", "Tone Stack Power", "Tone Stack", K::toggle},
         {"toneBass", "Bass", "Tone Stack", K::continuous},
         {"toneMid", "Mid", "Tone Stack", K::continuous},

@@ -113,6 +113,11 @@ const std::map<juce::String, Drive>& drives() {
          clickByHelp(root, "Density:", /*right=*/true);
          wait(200);
        }},
+      {"rig-neural-glitch-deck",
+       [](PluginRoot& root, MockBackend&) {
+         clickByHelp(root, "Glitch Engine:");
+         wait(200);
+       }},
       {"skin-neural-chrome-clouds-deck",
        [](PluginRoot& root, MockBackend&) {
          clickByHelp(root, "Density:", /*right=*/true);

@@ -83,6 +83,7 @@ void MeterStore::apply(const MeterLevels& m) {
   }
   applyCpu(m.cpu);
   applyCorrelation(m.correlation);
+  glitch_ = m.glitch;
 }
 
 void MeterStore::update(const juce::String& id, float raw) {

@@ -8,6 +8,8 @@
 #include "core/Paint.h"
 #include "core/Theme.h"
 #include "views/FxDeckPanel.h"
+#include "views/GlitchDeckPanel.h"
+#include "views/rig/InsertFaces.h"
 #include "widgets/HoverTip.h"
 #include "widgets/KnobFace.h"
 
@@ -19,6 +21,9 @@ constexpr int kPad = 24;
 constexpr int kGap = 26;          // between modules (the cable)
 constexpr int kSpectrumHeight = 116;
 constexpr int kGlitchMs = 220;
+// The Glitch Engine card's flicker when a glitch fires: at most one start
+// per this many ms (under 3 a second, the photosensitivity limit).
+constexpr juce::uint32 kEventFlickerGapMs = 340;
 constexpr int kModuleHeight = 170;  // every module is drawn at this height, then scaled
 // Long names: the full name floats under the module after this hover, and
 // on animated skins the cut title scrolls (units per second, with a rest at
@@ -34,7 +39,11 @@ constexpr float kKnobFine = 8.0f;
 constexpr float kPulseMinRate = 0.6f, kPulseMaxRate = 3.0f;
 constexpr float kPulseFloor = 0.08f;
 
-enum class Kind { pedal, amp, cab, fx };
+enum class Kind { pedal, amp, cab, fx, glitch };
+
+// Cards with no chain block behind them: the Time FX unit and the insert
+// effects.
+bool isUnit(Kind kind) { return kind == Kind::fx || kind == Kind::glitch; }
 
 Kind kindOf(const ChainItem& item) {
   if (!item.tone.isNam()) return Kind::cab;
@@ -47,6 +56,7 @@ int widthOf(Kind kind) {
     case Kind::amp: return 236;
     case Kind::cab: return 150;
     case Kind::fx: return 124;
+    case Kind::glitch: return static_cast<int>(rigface::kInsertWidth);
   }
   return 120;
 }
@@ -155,13 +165,16 @@ public:
   Module(Services& services, Kind kind, const ChainItem* item)
       : services_(services), kind_(kind) {
     if (item != nullptr) setItem(*item);
+    else if (kind == Kind::glitch) setHelpText(help::text(help::Key::glitchCard));
     else setHelpText("Time FX: modulation, delay and reverb. Click an effect to open its controls.");
-    setMouseCursor(item != nullptr ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+    setMouseCursor(item != nullptr || kind == Kind::glitch ? juce::MouseCursor::PointingHandCursor
+                                                           : juce::MouseCursor::NormalCursor);
     services_.meters.addListener(this);
     services_.stepper.addListener(this);
   }
   ~Module() override {
     if (fxDeck_ != nullptr) fxDeck_->close();
+    if (glitchDeck_ != nullptr) glitchDeck_->close();
     if (scopeOn_) services_.backend.setBlockScopeEnabled(item_.blockId, false);
     services_.stepper.removeListener(this);
     services_.meters.removeListener(this);
@@ -204,15 +217,25 @@ public:
   Kind kind() const { return kind_; }
   bool isBypassed() const { return bypassed(); }
   // 0..1: the block's output level on the meters' -60..0 dB scale.
-  float level() const { return kind_ == Kind::fx ? 0.0f : outLevel(); }
+  float level() const {
+    if (kind_ == Kind::glitch) return bypassed() ? 0.0f : dbToUnit(services_.meters.level(MeterStore::mainId(false)));
+    return kind_ == Kind::fx ? 0.0f : outLevel();
+  }
   std::function<void(const std::string&)> onOpen;
   // Drag to reorder, in the rig view's coordinates (see RigView::reorderDrag).
   std::function<void(Module&, juce::Point<int>)> onReorderDrag;
   std::function<void(Module&, juce::Point<int>, bool)> onReorderEnd;
   int row() const { return static_cast<int>(getProperties()["row"]); }
+  // Insert cards: whether the effect runs before the amps (layout).
+  bool insertPre() const { return glitch_.pre; }
+  bool isInsert() const { return kind_ == Kind::glitch; }
 
   void advance() {
     hoverTick();
+    if (kind_ == Kind::glitch) {
+      advanceGlitch();
+      return;
+    }
     if (kind_ == Kind::fx) {
       // Mirrors three parameters: repaint only when one flips.
       int bits = 0, bit = 1;
@@ -293,13 +316,19 @@ public:
     pressedBody_ = kind_ != Kind::fx && !overBlend(e.position) && knobAt(e.position) < 0 && arrowAt(e.position) == 0
                    && !(kind_ == Kind::pedal && overFootswitch(e.position));
     reordering_ = false;
+    if (kind_ == Kind::glitch) {
+      pressedPill_ = glitchPillAt(e.position);
+      if (pressedPill_ >= 0 || overInsertSwitch(e.position)) pressedBody_ = false;
+      if (pressedPill_ >= 0 && pillMomentary(pressedPill_)) setGlitchPill(pressedPill_, true);
+      return;
+    }
     if (overBlend(e.position)) {
       blendDrag_ = true;
       setBlend((e.position.x / scale() - blendTrack().getX()) / blendTrack().getWidth());
       showBlend();
       return;
     }
-    dragKnob_ = kind_ == Kind::fx ? -1 : knobAt(e.position);
+    dragKnob_ = isUnit(kind_) ? -1 : knobAt(e.position);
     if (dragKnob_ < 0) return;
     dragStartY_ = e.position.y;
     dragStartValue_ = knobValue(knobs()[static_cast<size_t>(dragKnob_)]);
@@ -336,7 +365,7 @@ public:
       setBlend(0.5f);
       return;
     }
-    const int index = kind_ == Kind::fx ? -1 : knobAt(e.position);
+    const int index = isUnit(kind_) ? -1 : knobAt(e.position);
     if (index < 0) return;
     setKnob(index, knobs()[static_cast<size_t>(index)].defaultValue);
     showKnobValue(index);
@@ -351,6 +380,10 @@ public:
       return;
     }
     pressedBody_ = false;
+    if (kind_ == Kind::glitch) {
+      glitchMouseUp(e);
+      return;
+    }
     if (blendDrag_) {
       // A blend press never opens the block.
       blendDrag_ = false;
@@ -388,6 +421,15 @@ public:
   }
 
   void mouseMove(const juce::MouseEvent& e) override {
+    if (kind_ == Kind::glitch) {
+      const int pill = glitchPillAt(e.position);
+      const bool sw = overInsertSwitch(e.position);
+      setHelpText(help::text(pill == 0   ? help::Key::glitchStutter
+                             : pill == 1 ? help::Key::glitchFreeze
+                             : sw        ? help::Key::glitchPower
+                                         : help::Key::glitchCard));
+      return;
+    }
     if (kind_ == Kind::fx) {
       const int row = fxRowAt(e.position);
       if (row == hoverRow_) return;
@@ -590,7 +632,8 @@ private:
       case Kind::pedal: row = box.withTrimmedTop(110).withHeight(18).reduced(10, 0); break;
       case Kind::amp: row = box.reduced(10).removeFromTop(34).reduced(4, 0); break;
       case Kind::cab: row = box.reduced(8).removeFromBottom(26); break;
-      case Kind::fx: return {};
+      case Kind::fx:
+      case Kind::glitch: return {};
     }
     return {row.withWidth(kArrowW), row.withTrimmedLeft(row.getWidth() - kArrowW)};
   }
@@ -636,7 +679,7 @@ private:
   }
 
   void stepperChanged() override {
-    if (kind_ == Kind::fx) return;
+    if (isUnit(kind_)) return;
     auto next = services_.stepper.cursor(item_.blockId);
     const bool same = next.has_value() == cursor_.has_value()
                       && (!next || (next->position == cursor_->position && next->total == cursor_->total
@@ -913,7 +956,10 @@ private:
 
   bool showsSize() const { return item_.tone.isNam() && item_.loaded; }
 
-  bool bypassed() const { return kind_ == Kind::fx ? fxBits_ == 0 : !item_.params.enabled; }
+  bool bypassed() const {
+    if (kind_ == Kind::glitch) return !glitch_.on;
+    return kind_ == Kind::fx ? fxBits_ == 0 : !item_.params.enabled;
+  }
   bool overFootswitch(juce::Point<float> p) const {
     const float scale = static_cast<float>(getHeight()) / static_cast<float>(kModuleHeight);
     return footswitchBox().expanded(4.0f).contains(p / scale);
@@ -922,7 +968,7 @@ private:
   bool glitching() const { return juce::Time::getMillisecondCounter() < glitchUntil_; }
 
   void meterChanged(const juce::String& id) override {
-    if (kind_ == Kind::fx || bypassed() || id != MeterStore::blockOutId(item_.blockId)) return;
+    if (isUnit(kind_) || bypassed() || id != MeterStore::blockOutId(item_.blockId)) return;
     if (kind_ == Kind::amp && theme::animate()) return;  // the tick repaints amps
     repaint();
   }
@@ -1031,6 +1077,11 @@ private:
         arrows(g);
         break;
       }
+      case Kind::glitch: {
+        body(g, box, glitch_.on);
+        rigface::drawGlitch(g, box, glitch_);
+        break;
+      }
       case Kind::fx: {
         body(g, box, fxBits_ > 0);
         g.setColour(theme::kWhite);
@@ -1039,6 +1090,112 @@ private:
         for (int row = 0; row < 3; ++row) fxRow(g, row);
         break;
       }
+    }
+  }
+
+  // The Glitch Engine card. Mirrors its parameters and the activity feed
+  // (MeterStore::glitch) into a look snapshot; repaints when that changes,
+  // and its screen moves at half the UI rate while it is on.
+  juce::Rectangle<float> nominalBox() const {
+    return juce::Rectangle<float>(static_cast<float>(widthOf(kind_)), static_cast<float>(kModuleHeight)).reduced(1.0f);
+  }
+  bool paramOn(const char* id) const {
+    auto* p = services_.backend.parameter(id);
+    return p != nullptr && p->getValue() >= 0.5f;
+  }
+  int glitchPillAt(juce::Point<float> p) const {
+    const auto local = p / scale();
+    for (int which = 0; which < 2; ++which)
+      if (rigface::glitchPill(nominalBox(), which).expanded(2.0f).contains(local)) return which;
+    return -1;
+  }
+  bool overInsertSwitch(juce::Point<float> p) const {
+    return rigface::insertFootswitch(nominalBox()).expanded(4.0f).contains(p / scale());
+  }
+  bool pillMomentary(int which) const { return paramOn(which == 0 ? "glitchStutterMode" : "glitchFreezeMode"); }
+  void setGlitchPill(int which, bool on) {
+    ParamBinding(services_.backend, which == 0 ? "glitchStutter" : "glitchFreeze").set(on);
+    advanceGlitch();
+  }
+  void glitchMouseUp(const juce::MouseEvent& e) {
+    const int pill = pressedPill_;
+    pressedPill_ = -1;
+    if (pill >= 0) {
+      if (pillMomentary(pill)) setGlitchPill(pill, false);
+      else if (e.mouseWasClicked() && glitchPillAt(e.position) == pill)
+        setGlitchPill(pill, !paramOn(pill == 0 ? "glitchStutter" : "glitchFreeze"));
+      return;
+    }
+    if (!e.mouseWasClicked()) return;
+    if (overInsertSwitch(e.position)) {
+      ParamBinding(services_.backend, "glitchEnabled").set(!glitch_.on);
+      advanceGlitch();
+      return;
+    }
+    toggleGlitchDeck();
+  }
+  void toggleGlitchDeck() {
+    if (glitchDeck_ == nullptr) glitchDeck_ = std::make_unique<GlitchDeckPanel>(services_);
+    if (glitchDeck_->isOpen()) {
+      glitchDeck_->close();
+      return;
+    }
+    glitchDeck_->open(*this, Popover::Align::left, GlitchDeckPanel::kGap, 0, Popover::Placement::below);
+  }
+  void advanceGlitch() {
+    const auto& a = services_.meters.glitch();
+    rigface::GlitchLook next;
+    next.on = paramOn("glitchEnabled");
+    next.stutter = paramOn("glitchStutter");
+    next.freeze = paramOn("glitchFreeze");
+    next.stutterHold = paramOn("glitchStutterMode");
+    next.freezeHold = paramOn("glitchFreezeMode");
+    next.pre = !paramOn("glitchPlacement");
+    // Bits is a linear 1..16 range: read off the normalised value.
+    if (auto* p = services_.backend.parameter("glitchBits")) next.bits = 1.0f + 15.0f * p->getValue();
+    next.crush = next.on ? a.crush : 0.0f;
+    next.freezeLevel = next.on ? a.freeze : 0.0f;
+    next.repeating = next.on && a.stutter;
+    const auto now = juce::Time::getMillisecondCounter();
+    if (a.events != lastEvents_) {
+      if (lastEvents_ >= 0 && next.on) {
+        eventAt_ = now;
+        // Neural-style skins flicker the card when a glitch fires, never
+        // more than kEventFlickerGapMs apart.
+        if (theme::kStyle.glitchOnLoad && theme::animate() && now - lastFlickerAt_ >= kEventFlickerGapMs) {
+          lastFlickerAt_ = now;
+          glitchUntil_ = now + kGlitchMs;
+        }
+      }
+      lastEvents_ = a.events;
+    }
+    next.event = a.event;
+    next.eventAge = eventAt_ == 0 ? 1.0f : static_cast<float>(now - eventAt_) / 1000.0f;
+    const bool moving = next.on && theme::animate() && isShowing();
+    if (moving) {
+      fxDt_ += 1.0f / 30.0f;
+      if (!(fxFrame_ = !fxFrame_)) {
+        fxTime_ += fxDt_;
+        fxDt_ = 0.0f;
+      }
+    }
+    next.time = moving ? fxTime_ : 0.0f;
+    const bool changed = next.on != glitch_.on || next.stutter != glitch_.stutter || next.freeze != glitch_.freeze ||
+                         next.stutterHold != glitch_.stutterHold || next.freezeHold != glitch_.freezeHold ||
+                         next.pre != glitch_.pre || !juce::approximatelyEqual(next.bits, glitch_.bits) ||
+                         next.repeating != glitch_.repeating || std::abs(next.crush - glitch_.crush) > 0.01f ||
+                         std::abs(next.freezeLevel - glitch_.freezeLevel) > 0.01f;
+    const bool screenMoves = !juce::approximatelyEqual(next.time, glitch_.time) || next.eventAge < 0.3f;
+    glitch_ = next;
+    if (changed || glitching() || wasGlitching_) {
+      wasGlitching_ = glitching();
+      bypassed_ = {};
+      repaint();
+    } else if (screenMoves) {
+      repaint(rigface::glitchScreen(nominalBox())
+                  .transformedBy(juce::AffineTransform::scale(scale()))
+                  .getSmallestIntegerContainer()
+                  .expanded(2));
     }
   }
 
@@ -1078,6 +1235,10 @@ private:
   float fxTime_ = 0.0f, fxDt_ = 0.0f;
   bool fxFrame_ = false;
   std::unique_ptr<FxDeckPanel> fxDeck_;
+  rigface::GlitchLook glitch_;
+  int lastEvents_ = -1, pressedPill_ = -1;
+  juce::uint32 eventAt_ = 0, lastFlickerAt_ = 0;
+  std::unique_ptr<GlitchDeckPanel> glitchDeck_;
 };
 
 RigView::RigView(Services& services)
@@ -1159,6 +1320,11 @@ void RigView::prefChanged(const juce::String& key) {
 void RigView::tick() {
   for (auto& m : modules_) m->advance();
   if (fx_ != nullptr) fx_->advance();
+  if (glitch_ != nullptr) {
+    glitch_->advance();
+    // A placement change from the deck, a preset or the host moves the card.
+    if (glitch_->insertPre() != glitchPreShown_ && dragged_ != glitch_.get()) resized();
+  }
   const auto now = juce::Time::getMillisecondCounter();
   const float dt = lastTickMs_ == 0 ? 0.0f : juce::jmin(0.1f, static_cast<float>(now - lastTickMs_) / 1000.0f);
   lastTickMs_ = now;
@@ -1202,14 +1368,17 @@ juce::Rectangle<int> RigView::cableArea(const Cable& c) const {
 
 void RigView::layoutCables() {
   std::vector<Cable> next;
-  for (int row = 0; row < rowCount_; ++row) {
+  // The first row in signal order (inserts, chain, FX unit), then the
+  // second chain's row on its own.
+  const auto first = row0Sequence();
+  for (size_t i = 1; i < first.size(); ++i) next.push_back({first[i - 1], first[i]});
+  for (int row = 1; row < rowCount_; ++row) {
     Module* prev = nullptr;
     for (auto& m : modules_) {
-      if (static_cast<int>(m->getProperties()["row"]) != row) continue;
+      if (m->row() != row) continue;
       if (prev != nullptr) next.push_back({prev, m.get()});
       prev = m.get();
     }
-    if (row == 0 && prev != nullptr && fx_ != nullptr) next.push_back({prev, fx_.get()});
   }
   // Keep each surviving cable's phase, so a relayout doesn't restart pulses.
   for (auto& c : next)
@@ -1264,6 +1433,14 @@ void RigView::rebuild() {
     fx_ = std::make_unique<Module>(services_, Kind::fx, nullptr);
     addAndMakeVisible(*fx_);
   }
+  if (glitch_ == nullptr) {
+    glitch_ = std::make_unique<Module>(services_, Kind::glitch, nullptr);
+    glitch_->getProperties().set("row", 0);
+    glitch_->onReorderDrag = [this](Module& mod, juce::Point<int> pos) { reorderDrag(mod, pos); };
+    glitch_->onReorderEnd = [this](Module& mod, juce::Point<int> pos, bool commit) { reorderEnd(mod, pos, commit); };
+    glitch_->advance();
+    addAndMakeVisible(*glitch_);
+  }
   rowCount_ = stereo_ ? 2 : 1;
   resized();
   repaint();
@@ -1289,11 +1466,14 @@ void RigView::resized() {
   for (int row = 0; row < rowCount_; ++row) {
     int total = 0;
     std::vector<Module*> inRow;
-    for (auto& m : modules_)
-      if (static_cast<int>(m->getProperties()["row"]) == row) {
-        inRow.push_back(m.get());
-        total += widthOf(m->kind()) + kGap;
-      }
+    if (row == 0) {
+      inRow = row0Sequence();
+      inRow.pop_back();  // the FX unit, placed below
+    } else {
+      for (auto& m : modules_)
+        if (m->row() == row) inRow.push_back(m.get());
+    }
+    for (auto* m : inRow) total += widthOf(m->kind()) + kGap;
     if (row == 0) total += widthOf(Kind::fx);
     else total -= kGap;
     // Shrink everything to fit a long chain or a second row.
@@ -1310,7 +1490,29 @@ void RigView::resized() {
     if (row == 0)
       fx_->setBounds(juce::roundToInt(x), y, juce::roundToInt(widthOf(Kind::fx) * scale), h);
   }
+  if (glitch_ != nullptr) glitchPreShown_ = glitch_->insertPre();
   layoutCables();
+}
+
+// The first row in signal order: inserts placed before the amps, the
+// chain, inserts placed after it, the Time FX unit.
+std::vector<RigView::Module*> RigView::row0Sequence() const {
+  std::vector<Module*> out;
+  const bool pre = glitch_ != nullptr && glitch_->insertPre();
+  if (glitch_ != nullptr && pre) out.push_back(glitch_.get());
+  for (const auto& m : modules_)
+    if (m->row() == 0) out.push_back(m.get());
+  if (glitch_ != nullptr && !pre) out.push_back(glitch_.get());
+  if (fx_ != nullptr) out.push_back(fx_.get());
+  return out;
+}
+
+// An insert card dropped at `x`: before the amps when left of the first
+// chain module's middle (or of the row's middle on an empty chain).
+bool RigView::insertDropPre(int x) const {
+  const auto chain = rowModules(0);
+  const int split = chain.empty() ? getWidth() / 2 : chain.front()->getBounds().getCentreX();
+  return x < split;
 }
 
 std::vector<RigView::Module*> RigView::rowModules(int row) const {
@@ -1349,7 +1551,9 @@ void RigView::reorderDrag(Module& m, juce::Point<int> pos) {
   }
   // The module follows the pointer along its row.
   m.setTopLeftPosition(pos.x - dragGrabX_, m.getY());
-  const int next = dropIndex(m, m.getBounds().getCentreX());
+  // An insert card has two places: before the chain (0) or after it (1).
+  const int next = m.isInsert() ? (insertDropPre(m.getBounds().getCentreX()) ? 0 : 1)
+                                : dropIndex(m, m.getBounds().getCentreX());
   if (next != dropIndex_) {
     dropIndex_ = next;
     repaint();
@@ -1360,6 +1564,20 @@ void RigView::reorderDrag(Module& m, juce::Point<int> pos) {
 
 void RigView::reorderEnd(Module& m, juce::Point<int> pos, bool commit) {
   if (dragged_ != &m) return;
+  if (m.isInsert()) {
+    const bool pre = insertDropPre(m.getBounds().getCentreX());
+    const auto rowBand = juce::Rectangle<int>(0, m.getY() - m.getHeight() / 2, getWidth(), m.getHeight() * 2);
+    dragged_ = nullptr;
+    dropIndex_ = -1;
+    m.setAlpha(1.0f);
+    if (commit && rowBand.contains(pos) && pre != m.insertPre()) {
+      ParamBinding(services_.backend, "glitchPlacement").set(pre ? 0.0f : 1.0f);
+      m.advance();
+    }
+    resized();
+    repaint();
+    return;
+  }
   const int index = dropIndex(m, m.getBounds().getCentreX());
   const int row = m.row();
   const std::string id = m.blockId();
@@ -1394,7 +1612,16 @@ void RigView::reorderEnd(Module& m, juce::Point<int> pos, bool commit) {
 void RigView::paintOverChildren(juce::Graphics& g) {
   if (dragged_ == nullptr || dropIndex_ < 0) return;
   // The drop bar: an accent line the height of the module, with a halo.
-  const auto x = static_cast<float>(dropBarX(*dragged_, dropIndex_));
+  float x = 0.0f;
+  if (dragged_->isInsert()) {
+    // Before the chain's first module, or after its last (before the FX unit).
+    const auto chain = rowModules(0);
+    const int gap = juce::roundToInt(kGap * static_cast<float>(dragged_->getHeight()) / kModuleHeight);
+    if (chain.empty()) x = static_cast<float>(fx_->getX() - gap / 2);
+    else x = static_cast<float>(dropIndex_ == 0 ? chain.front()->getX() - gap / 2 : chain.back()->getRight() + gap / 2);
+  } else {
+    x = static_cast<float>(dropBarX(*dragged_, dropIndex_));
+  }
   const auto top = static_cast<float>(dragged_->getY()), bottom = static_cast<float>(dragged_->getBottom());
   if (theme::kStyle.glow > 0.0f) {
     g.setColour(theme::kBrandYellow.withAlpha(0.3f * theme::kStyle.glow));
@@ -1408,6 +1635,12 @@ std::vector<juce::Component*> RigView::modules() const {
   std::vector<juce::Component*> out;
   for (const auto& m : modules_) out.push_back(m.get());
   if (fx_ != nullptr) out.push_back(fx_.get());
+  return out;
+}
+
+std::vector<juce::Component*> RigView::inserts() const {
+  std::vector<juce::Component*> out;
+  if (glitch_ != nullptr) out.push_back(glitch_.get());
   return out;
 }
 

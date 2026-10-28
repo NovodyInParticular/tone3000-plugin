@@ -17,6 +17,10 @@ enum class Key {
   pitch, pitchPower, pitchStep, pitchTonality, pitchWindow,
   cloudsDensity, cloudsTexture, cloudsBlend, cloudsPower, cloudsFreeze, cloudsMode, cloudsQuality,
   cloudsPosition, cloudsSize, cloudsPitch, cloudsSpread, cloudsFeedback, cloudsReverb,
+  // Insert effects (rig view cards and their decks)
+  glitchCard, glitchPower, glitchStutter, glitchFreeze, glitchStutterMode, glitchFreezeMode, glitchPlacement,
+  glitchRate, glitchLength, glitchBits, glitchSampleRate, glitchChance, glitchIntensity, glitchSeed,
+  glitchFreezeFade, glitchMix, glitchOutput, standaloneBpm,
   spreadOffset, spreadWobble, spreadWobblePower, spreadCrossover, spreadCrossoverPower,
   spreadDiffuse, spreadAdvert, spreadPower, imageCorrelation, spreadMonoOutput, spreadDualMono,
   alignOffset, alignWobble, alignWobblePower, alignCrossover, alignCrossoverPower,

@@ -206,6 +206,21 @@ void TONE3000Processor::resolveParamRefs() {
   paramRefs.cloudsSpread = get("cloudsSpread");
   paramRefs.cloudsFeedback = get("cloudsFeedback");
   paramRefs.cloudsReverb = get("cloudsReverb");
+  paramRefs.glitchEnabled = get("glitchEnabled");
+  paramRefs.glitchMix = get("glitchMix");
+  paramRefs.glitchOutput = get("glitchOutput");
+  paramRefs.glitchStutter = get("glitchStutter");
+  paramRefs.glitchStutterRate = get("glitchStutterRate");
+  paramRefs.glitchStutterLength = get("glitchStutterLength");
+  paramRefs.glitchBits = get("glitchBits");
+  paramRefs.glitchRate = get("glitchRate");
+  paramRefs.glitchChance = get("glitchChance");
+  paramRefs.glitchIntensity = get("glitchIntensity");
+  paramRefs.glitchSeed = get("glitchSeed");
+  paramRefs.glitchFreeze = get("glitchFreeze");
+  paramRefs.glitchFreezeFade = get("glitchFreezeFade");
+  paramRefs.glitchPlacement = get("glitchPlacement");
+  paramRefs.standaloneBpm = get("standaloneBpm");
 }
 
 // The time-FX rack's settings, decoded from the parameter atomics. Safe on
@@ -255,6 +270,25 @@ cloudsfx::Params TONE3000Processor::cloudsParamsFromRefs() const {
   p.spread = paramRefs.cloudsSpread->load();
   p.feedback = paramRefs.cloudsFeedback->load();
   p.reverb = paramRefs.cloudsReverb->load();
+  return p;
+}
+
+// The Glitch Engine's settings; same threading as above.
+glitchfx::Params TONE3000Processor::glitchParamsFromRefs() const {
+  glitchfx::Params p;
+  p.on = paramRefs.glitchEnabled->load() > 0.5f;
+  p.mix = paramRefs.glitchMix->load();
+  p.outputDb = paramRefs.glitchOutput->load();
+  p.stutter = paramRefs.glitchStutter->load() > 0.5f;
+  p.rate = static_cast<int>(std::lround(paramRefs.glitchStutterRate->load()));
+  p.length = paramRefs.glitchStutterLength->load();
+  p.bits = paramRefs.glitchBits->load();
+  p.rateHz = paramRefs.glitchRate->load();
+  p.chance = paramRefs.glitchChance->load();
+  p.intensity = paramRefs.glitchIntensity->load();
+  p.seed = static_cast<int>(std::lround(paramRefs.glitchSeed->load()));
+  p.freeze = paramRefs.glitchFreeze->load() > 0.5f;
+  p.freezeFadeMs = paramRefs.glitchFreezeFade->load();
   return p;
 }
 
@@ -562,6 +596,58 @@ juce::AudioProcessorValueTreeState::ParameterLayout TONE3000Processor::createPar
   layout.add(normParam("cloudsFeedback", 79, 0.0f));
   layout.add(normParam("cloudsReverb", 80, 0.3f));
 
+  // Glitch Engine (see GlitchFx.h). Off by default; with every section at
+  // its default it is transparent even when on. Stutter and Freeze are
+  // booleans so hosts and MIDI can drive them; their Latch / Momentary
+  // modes only change how the UI buttons behave. Placement isn't
+  // automatable: moving the insert dips the output for a moment.
+  juce::StringArray glitchRates, holdModes, placements;
+  for (const auto* name : glitchfx::kRateNames) glitchRates.add(name);
+  for (const auto* name : glitchfx::kHoldModeNames) holdModes.add(name);
+  for (const auto* name : kInsertPlacementNames) placements.add(name);
+  layout.add(boolParam("glitchEnabled", 81, false));
+  layout.add(normParam("glitchMix", 82, 1.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"glitchOutput", 83}, "glitchOutput",
+      juce::NormalisableRange<float>(-24.0f, 12.0f, 0.01f), 0.0f,
+      juce::AudioParameterFloatAttributes().withLabel("dB")));
+  layout.add(boolParam("glitchStutter", 84, false));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"glitchStutterRate", 85}, "glitchStutterRate", glitchRates, 2));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"glitchStutterLength", 86}, "glitchStutterLength",
+      juce::NormalisableRange<float>(0.1f, 1.0f, 0.0001f), 1.0f));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"glitchBits", 87}, "glitchBits",
+      juce::NormalisableRange<float>(glitchfx::kMinBits, glitchfx::kMaxBits, 0.01f), glitchfx::kMaxBits,
+      juce::AudioParameterFloatAttributes().withLabel("bit")));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"glitchRate", 88}, "glitchRate", logRange(glitchfx::kMinRateHz, glitchfx::kMaxRateHz),
+      glitchfx::kMaxRateHz, wholeUnitText("Hz")));
+  layout.add(normParam("glitchChance", 89, 0.0f));
+  layout.add(normParam("glitchIntensity", 90, 0.5f));
+  layout.add(std::make_unique<juce::AudioParameterInt>(
+      juce::ParameterID{"glitchSeed", 91}, "glitchSeed", 0, glitchfx::kMaxSeed, 0));
+  layout.add(boolParam("glitchFreeze", 92, false));
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"glitchFreezeFade", 93}, "glitchFreezeFade",
+      logRange(glitchfx::kMinFreezeFadeMs, glitchfx::kMaxFreezeFadeMs), 150.0f, wholeUnitText("ms")));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"glitchFreezeMode", 94}, "glitchFreezeMode", holdModes, 0,
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"glitchStutterMode", 95}, "glitchStutterMode", holdModes, 0,
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+  layout.add(std::make_unique<juce::AudioParameterChoice>(
+      juce::ParameterID{"glitchPlacement", 96}, "glitchPlacement", placements, 1,
+      juce::AudioParameterChoiceAttributes().withAutomatable(false)));
+  // The tempo tempo-synced effects follow when the host has none (the
+  // standalone app). Session state, not part of a preset.
+  layout.add(std::make_unique<juce::AudioParameterFloat>(
+      juce::ParameterID{"standaloneBpm", 97}, "standaloneBpm",
+      juce::NormalisableRange<float>(40.0f, 300.0f, 0.1f), 120.0f,
+      juce::AudioParameterFloatAttributes().withLabel("BPM").withAutomatable(false)));
+
   return layout;
 }
 
@@ -766,7 +852,9 @@ double TONE3000Processor::getTailLengthSeconds() const {
       timefx::Rack::tailSeconds(timeFxParamsFromRefs(), hostBpm.load(std::memory_order_relaxed));
   //  - Clouds' recording buffer and reverb.
   const double cloudsTailSeconds = cloudsfx::Engine::tailSeconds(cloudsParamsFromRefs());
-  return std::max({irTailSeconds, dcBlockerTailSeconds, fxTailSeconds, cloudsTailSeconds});
+  //  - The Glitch Engine's freeze fade-out.
+  const double glitchTailSeconds = glitchfx::Engine::tailSeconds(glitchParamsFromRefs());
+  return std::max({irTailSeconds, dcBlockerTailSeconds, fxTailSeconds, cloudsTailSeconds, glitchTailSeconds});
 }
 
 // The host program API (getNumPrograms and friends) lives in
@@ -1145,6 +1233,10 @@ void TONE3000Processor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   // allocates while processing.
   timeFx.prepare(sampleRate, samplesPerBlock);
   cloudsFx.prepare(sampleRate, samplesPerBlock);
+  glitchFx.prepare(sampleRate, samplesPerBlock);
+  insertMoveGain.reset(sampleRate, kInsertMoveSeconds);
+  insertMoveGain.setCurrentAndTargetValue(1.0f);
+  rtGlitchPre = cacheGlitchPre;
   outputSpectrum.prepare(sampleRate);
   inputSpectrum.prepare(sampleRate);
 
@@ -1245,6 +1337,7 @@ void TONE3000Processor::releaseResources() {
   inputGate.reset();
   timeFx.reset();
   cloudsFx.reset();
+  glitchFx.reset();
 }
 
 bool TONE3000Processor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -1386,9 +1479,52 @@ void TONE3000Processor::updateCachedParameters() {
 
   cacheTimeFx = timeFxParamsFromRefs();
   cacheClouds = cloudsParamsFromRefs();
+  cacheGlitch = glitchParamsFromRefs();
+  cacheGlitchPre = std::lround(paramRefs.glitchPlacement->load()) == 0;
   cacheInputCalGain = paramRefs.inputCalEnabled->load() > 0.5f
                           ? juce::Decibels::decibelsToGain(paramRefs.inputCalGain->load())
                           : 1.0f;
+}
+
+// Audio thread. Applies a placement change of the insert effects: while one
+// is sounding, the output dips to silence first and the insert moves at the
+// bottom (its buffers restart there, they held the other position's audio);
+// a silent one moves at once.
+void TONE3000Processor::updateInsertPlacement() {
+  if (cacheGlitchPre == rtGlitchPre) {
+    if (insertMoveGain.getTargetValue() < 1.0f)
+      insertMoveGain.setTargetValue(1.0f);  // a move that was taken back
+    return;
+  }
+  const bool sounding = glitchFx.running();
+  if (!sounding || (insertMoveGain.getTargetValue() <= 0.0f && !insertMoveGain.isSmoothing())) {
+    rtGlitchPre = cacheGlitchPre;
+    if (sounding) glitchFx.reset();
+    insertMoveGain.setTargetValue(1.0f);
+    return;
+  }
+  insertMoveGain.setTargetValue(0.0f);
+}
+
+// Audio thread. The host's tempo and position, or the standalone tempo when
+// the host has none.
+glitchfx::Transport TONE3000Processor::currentTransport() {
+  glitchfx::Transport t;
+  t.bpm = 0.0;
+  if (auto* playHead = getPlayHead()) {
+    if (const auto position = playHead->getPosition()) {
+      if (const auto tempo = position->getBpm()) t.bpm = *tempo;
+      if (const auto ppq = position->getPpqPosition()) {
+        t.playing = position->getIsPlaying();
+        t.ppq = *ppq;
+      }
+    }
+  }
+  if (!(std::isfinite(t.bpm) && t.bpm > 0.0)) {
+    t.bpm = paramRefs.standaloneBpm->load();
+    t.playing = false;
+  }
+  return t;
 }
 
 // The outgoing half of a swap crossfade: the retiring model's own wet path
@@ -2068,6 +2204,9 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   }
 
   updateCachedParameters();
+  updateInsertPlacement();
+  const glitchfx::Transport transport = currentTransport();
+  hostBpm.store(transport.bpm, std::memory_order_relaxed);
 
   // Heartbeat for isAudioActive(): fade handshakes skip their bounded waits
   // when no callbacks are running (nothing is audible then).
@@ -2195,6 +2334,12 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     pitchShift.setParams(cachePitch);
     pitchShift.process(buffer);
   }
+
+  // ##########
+  // Insert effects placed before the chain (into the amps).
+  // ##########
+  if (rtGlitchPre)
+    glitchFx.process(buffer, cacheGlitch, transport);
 
   // #########################
   // Auto-align probe injection (see AutoOffset.h): while a measurement is
@@ -2367,19 +2512,28 @@ void TONE3000Processor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
   cloudsFx.process(buffer, cacheClouds);
 
   // ##########
-  // Time effects (delay / reverb / modulation) after the cab and tone
-  // stack. Tempo comes from the host when it has one; tails keep ringing
-  // through chain-edit fades (the fade sits upstream).
+  // Insert effects placed after the chain, before the time FX so delay and
+  // reverb catch them.
   // ##########
-  {
-    double bpm = 0.0;
-    if (auto* playHead = getPlayHead())
-      if (const auto position = playHead->getPosition())
-        if (const auto tempo = position->getBpm())
-          bpm = *tempo;
-    hostBpm.store(bpm, std::memory_order_relaxed);
-    timeFx.process(buffer, cacheTimeFx, bpm);
+  if (!rtGlitchPre)
+    glitchFx.process(buffer, cacheGlitch, transport);
+
+  // Moving an insert: the dip around the move (see updateInsertPlacement).
+  if (insertMoveGain.isSmoothing() || insertMoveGain.getCurrentValue() < 1.0f) {
+    for (int i = 0; i < numSamples; ++i) {
+      const float g = insertMoveGain.getNextValue();
+      for (int ch = 0; ch < numChannels; ++ch)
+        buffer.getWritePointer(ch)[i] *= g;
+    }
   }
+
+  // ##########
+  // Time effects (delay / reverb / modulation) after the cab and tone
+  // stack. Tempo comes from the host when it has one, else the standalone
+  // tempo; tails keep ringing through chain-edit fades (the fade sits
+  // upstream).
+  // ##########
+  timeFx.process(buffer, cacheTimeFx, transport.bpm);
 
   // ##########
   // Auto-align probe mute: fades the output before the probe starts, holds

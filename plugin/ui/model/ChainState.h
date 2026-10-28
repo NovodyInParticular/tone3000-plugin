@@ -198,6 +198,14 @@ struct MeterLevels {
   std::vector<Block> blocks;
   float cpu = 0;
   float correlation = 1;
+  // The insert effects' activity, for the rig view's animations.
+  struct Glitch {
+    int events = 0;  // counts up per fired glitch / stutter engage (wraps)
+    int event = 0;   // the last one's kind (glitchfx::Event)
+    float freeze = 0;
+    bool stutter = false;
+    float crush = 0;
+  } glitch;
 
   static MeterLevels parse(const juce::var& v);
 };

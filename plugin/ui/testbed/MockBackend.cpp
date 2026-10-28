@@ -64,6 +64,13 @@ constexpr SliderDefault kSliders[] = {
     {"cloudsBlend", 0.5f},       {"cloudsSpread", 0.5f},   {"cloudsFeedback", 0.0f},
     {"cloudsReverb", 0.3f},
     {"inputCalGain", 0.5f},  // 0 dB on the ±24 dB map
+    // Glitch Engine at the processor defaults on their normalised maps
+    // (1/16, 100 %, 16 bit, rate off, 150 ms fade, 0 dB, post-amp, 120 BPM).
+    {"glitchMix", 1.0f},         {"glitchOutput", 0.6667f}, {"glitchStutterRate", 0.25f},
+    {"glitchStutterLength", 1.0f}, {"glitchBits", 1.0f},    {"glitchRate", 1.0f},
+    {"glitchChance", 0.0f},      {"glitchIntensity", 0.5f}, {"glitchSeed", 0.0f},
+    {"glitchFreezeFade", 0.5677f}, {"glitchFreezeMode", 0.0f}, {"glitchStutterMode", 0.0f},
+    {"glitchPlacement", 1.0f},   {"standaloneBpm", 0.3077f},
 };
 struct ToggleDefault {
   const char* id;
@@ -85,6 +92,8 @@ constexpr ToggleDefault kToggles[] = {
     {"fxModEnabled", false},           {"fxModType", false},
     {"inputCalEnabled", false},
     {"cloudsEnabled", false},          {"cloudsFreeze", false},
+    {"glitchEnabled", false},          {"glitchStutter", false},
+    {"glitchFreeze", false},
 };
 
 }  // namespace

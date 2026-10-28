@@ -364,6 +364,8 @@ target_sources(${PROJECT_NAME}
         src/TimeFx.cpp
         include/CloudsFx.h
         src/CloudsFx.cpp
+        include/GlitchFx.h
+        src/GlitchFx.cpp
         include/RigShare.h
         src/RigShare.cpp
         src/ProcessorRig.cpp

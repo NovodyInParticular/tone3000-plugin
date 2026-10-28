@@ -62,7 +62,11 @@ bool allowedParam(const juce::String& id) {
       "fxModEnabled",   "fxModType",        "fxModRate",       "fxModDepth",      "fxModMix",
       "fxOrder",        "cloudsEnabled",    "cloudsMode",      "cloudsQuality",   "cloudsFreeze",
       "cloudsPosition", "cloudsSize",       "cloudsPitch",     "cloudsDensity",   "cloudsTexture",
-      "cloudsBlend",    "cloudsSpread",     "cloudsFeedback",  "cloudsReverb"};
+      "cloudsBlend",    "cloudsSpread",     "cloudsFeedback",  "cloudsReverb",
+      "glitchEnabled",  "glitchMix",        "glitchOutput",    "glitchStutter",   "glitchStutterRate",
+      "glitchStutterLength", "glitchBits",  "glitchRate",      "glitchChance",    "glitchIntensity",
+      "glitchSeed",     "glitchFreeze",     "glitchFreezeFade", "glitchFreezeMode", "glitchStutterMode",
+      "glitchPlacement"};
   return ids.contains(id);
 }
 

@@ -51,4 +51,21 @@ private:
   ParamBinding binding_;
 };
 
+// A text toggle whose behaviour follows a Latch / Momentary choice
+// parameter (`modeId`): latched, a click flips the bool parameter; in
+// Momentary it is on only while the button is held down. Glitch Engine's
+// STUTTER and FREEZE.
+class ParamHoldToggle : public ChromeTextButton {
+public:
+  ParamHoldToggle(Backend& backend, const juce::String& paramId, const juce::String& modeId, juce::String label,
+                  help::Key help);
+  ParamBinding& binding() { return binding_; }
+  bool momentary() const { return mode_.boolValue(); }
+
+  void buttonStateChanged() override;
+
+private:
+  ParamBinding binding_, mode_;
+};
+
 }  // namespace t3k::ui

@@ -127,6 +127,28 @@ std::map<Key, String> buildTable() {
   t[Key::cloudsSpread] = knobDesktop("Spread", "how far grains scatter across the stereo field.");
   t[Key::cloudsFeedback] = knobDesktop("Feedback", "output fed back into the buffer. High: endless smear.");
   t[Key::cloudsReverb] = knobDesktop("Reverb", "Clouds' own reverb on the wet signal.");
+  t[Key::glitchCard] = U("Glitch Engine: stutter, random glitches, freeze, bit-crush. Click: controls · drag: move "
+                         "before or after the amps.");
+  t[Key::glitchPower] = U("Glitch Engine on/off.");
+  t[Key::glitchStutter] = U("STUTTER: repeat the last slice at the Rate. Latch: click on/off · Hold: while pressed.");
+  t[Key::glitchFreeze] = U("FREEZE: hold the current sound as a drone and play over it. Latch or Hold, like STUTTER.");
+  t[Key::glitchStutterMode] = U("How STUTTER's button works: LATCH toggles, HOLD is on while pressed. Click: switch.");
+  t[Key::glitchFreezeMode] = U("How FREEZE's button works: LATCH toggles, HOLD is on while pressed. Click: switch.");
+  t[Key::glitchPlacement] = U("Where the Glitch Engine runs: before the amps or after the cab. Click: switch.");
+  t[Key::glitchRate] = knobDesktop("Rate", "stutter and glitch grid, 1/4 to 1/64 and triplets, in time with the host.");
+  t[Key::glitchLength] = knobDesktop("Length", "how much of each repeat sounds. Short: choppy gated stutter.");
+  t[Key::glitchBits] = knobDesktop("Bits", "bit depth, 16 (clean) down to 1.");
+  t[Key::glitchSampleRate] = knobDesktop("Rate Hz", "sample-rate reduction for aliased grit. Top: off.");
+  t[Key::glitchChance] = knobDesktop("Chance", "how often a random glitch fires on the grid. 0: never.");
+  t[Key::glitchIntensity] =
+      knobDesktop("Intensity", "how long and wild the random glitches get (reverses, octave jumps).");
+  t[Key::glitchSeed] = knobDesktop("Seed", "Free: a new pattern every time. A number: the same pattern at the same "
+                                           "song position.");
+  t[Key::glitchFreezeFade] = knobDesktop("Fade", "how slowly FREEZE swells in and dies away.");
+  t[Key::glitchMix] = knobDesktop("Mix", "dry/wet.");
+  t[Key::glitchOutput] = knobDesktop("Output", "level after the Glitch Engine, -24 to +12 dB.");
+  t[Key::standaloneBpm] =
+      knobDesktop("Tempo", "the tempo synced effects follow when there is no host tempo (the standalone app).");
   t[Key::spreadOffset] =
       knobDesktop("Offset", "double-track lag, ≤24 ms toward L or R. Center: off. Right-click: advanced.");
   t[Key::spreadWobble] = knobDesktop("Wobble", "humanizing delay drift, up to ±1.2 ms.");

@@ -1279,6 +1279,18 @@ juce::var TONE3000Processor::getMeterLevels() const {
   // extra call.
   root->setProperty("correlation", stereoEnabled.load() ? stereoOffset.correlation()
                                                         : spread.correlation());
+  // Insert-effect activity for the rig view's animations (lock-free
+  // atomics the audio thread writes once per block).
+  {
+    const auto& a = glitchFx.activity();
+    juce::DynamicObject::Ptr glitch = new juce::DynamicObject();
+    glitch->setProperty("events", static_cast<int>(a.events.load(std::memory_order_relaxed)));
+    glitch->setProperty("event", a.lastEvent.load(std::memory_order_relaxed));
+    glitch->setProperty("freeze", a.freeze.load(std::memory_order_relaxed));
+    glitch->setProperty("stutter", a.stuttering.load(std::memory_order_relaxed));
+    glitch->setProperty("crush", a.crush.load(std::memory_order_relaxed));
+    root->setProperty("glitch", juce::var(glitch.get()));
+  }
 
   juce::DynamicObject::Ptr blocks = new juce::DynamicObject();
   {

@@ -30,6 +30,17 @@ The source is on the [`custom`](https://github.com/NovodyInParticular/tone3000-p
   Mode (Granular / Stretch / Looping Delay / Spectral), Quality, Position,
   Size, Pitch, Spread, Feedback and Reverb. No latency on the dry signal.
   Off by default.
+- **Glitch Engine.** A digital glitch insert, shown as its own card in the rig
+  view (click it for the controls, drag it before or after the amps):
+  tempo-synced stutter (1/4 to 1/64 and triplets, with a repeat length),
+  random glitches (stutters, reverses, dropouts and octave jumps) with a
+  chance, an intensity and a seed that replays the same pattern at the same
+  song position, freeze with a fade, bit-crush (16 to 1 bit) and sample-rate
+  reduction, mix and output. Stutter and Freeze latch or hold, on the card
+  and over MIDI ("Stutter (hold)", "Freeze (hold)" targets for momentary
+  footswitches). Glitches can never come out much louder than what you
+  played. No latency. Off by default. The standalone app has its own tempo
+  (in the Glitch controls) for everything tempo-synced.
 - **Time FX rack** after the cab: chorus / flanger, delay (tempo sync,
   ping-pong, damping) and reverb, in any of six orders. Effects ring out
   when switched off.

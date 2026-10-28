@@ -229,6 +229,13 @@ MeterLevels MeterLevels::parse(const juce::var& v) {
   }
   m.cpu = static_cast<float>(num(v, "cpu", 0));
   m.correlation = static_cast<float>(num(v, "correlation", 1));
+  if (const auto& g = v["glitch"]; g.isObject()) {
+    m.glitch.events = static_cast<int>(num(g, "events", 0));
+    m.glitch.event = static_cast<int>(num(g, "event", 0));
+    m.glitch.freeze = static_cast<float>(num(g, "freeze", 0));
+    m.glitch.stutter = static_cast<bool>(g["stutter"]);
+    m.glitch.crush = static_cast<float>(num(g, "crush", 0));
+  }
   return m;
 }
 

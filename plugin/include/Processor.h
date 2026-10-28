@@ -30,6 +30,7 @@
 #include "StereoOffset.h"
 #include "TimeFx.h"
 #include "CloudsFx.h"
+#include "GlitchFx.h"
 #include "InputCalibration.h"
 #include "RigShare.h"
 #include <set>
@@ -38,6 +39,10 @@
 #include <mutex>
 #include <set>
 #include "ModelDiskCache.h"
+
+// Where an insert effect (Glitch Engine, Abyss Pitch) runs: before the
+// chain (into the amps) or after it (after Clouds, before the time FX).
+inline constexpr std::array<const char*, 2> kInsertPlacementNames = {"Pre-amp", "Post-amp"};
 
 class TONE3000Processor;
 
@@ -1334,9 +1339,25 @@ private:
     std::atomic<float>* cloudsSpread = nullptr;
     std::atomic<float>* cloudsFeedback = nullptr;
     std::atomic<float>* cloudsReverb = nullptr;
+    std::atomic<float>* glitchEnabled = nullptr;
+    std::atomic<float>* glitchMix = nullptr;
+    std::atomic<float>* glitchOutput = nullptr;
+    std::atomic<float>* glitchStutter = nullptr;
+    std::atomic<float>* glitchStutterRate = nullptr;
+    std::atomic<float>* glitchStutterLength = nullptr;
+    std::atomic<float>* glitchBits = nullptr;
+    std::atomic<float>* glitchRate = nullptr;
+    std::atomic<float>* glitchChance = nullptr;
+    std::atomic<float>* glitchIntensity = nullptr;
+    std::atomic<float>* glitchSeed = nullptr;
+    std::atomic<float>* glitchFreeze = nullptr;
+    std::atomic<float>* glitchFreezeFade = nullptr;
+    std::atomic<float>* glitchPlacement = nullptr;
+    std::atomic<float>* standaloneBpm = nullptr;
   } paramRefs;
   timefx::Params timeFxParamsFromRefs() const;
   cloudsfx::Params cloudsParamsFromRefs() const;
+  glitchfx::Params glitchParamsFromRefs() const;
   void resolveParamRefs();
 
   /** The oversampling factor the osEnabled/osFactor parameters currently
@@ -1419,6 +1440,17 @@ private:
   PitchShift::Params cachePitch;
   timefx::Params cacheTimeFx;
   cloudsfx::Params cacheClouds;
+  glitchfx::Params cacheGlitch;
+  bool cacheGlitchPre = false;  // placement: before the chain
+  // The placement the audio thread is running. A change dips the output
+  // through insertMoveGain, moves the insert at the bottom of the dip and
+  // comes back, so moving a sounding effect never clicks.
+  bool rtGlitchPre = false;
+  static constexpr double kInsertMoveSeconds = 0.012;
+  juce::LinearSmoothedValue<float> insertMoveGain{1.0f};
+  void updateInsertPlacement();
+  // Host tempo (or the standalone tempo) and position for this callback.
+  glitchfx::Transport currentTransport();
   float cacheInputCalGain = 1.0f;  // linear; 1 while calibration is off
 
   // Guided input calibration (see InputCalibration.h). The last measured
@@ -1432,6 +1464,9 @@ private:
   // Mutable Instruments Clouds between the tone stack and the time FX
   // (see CloudsFx.h).
   cloudsfx::Engine cloudsFx;
+  // Glitch Engine (see GlitchFx.h): after Clouds by default, or before the
+  // chain (glitchPlacement).
+  glitchfx::Engine glitchFx;
   // The plugin's output for the rig view's analyser, addressed through the
   // block spectrum API as kOutputSpectrumId.
   BlockSpectrum outputSpectrum;
