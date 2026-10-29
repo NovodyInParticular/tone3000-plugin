@@ -2085,7 +2085,14 @@ struct ScrollSurfacesTests : juce::UnitTest {
     live.focus(*stops.front());
     rewind();
     live.focus(*stops.back());
-    expect(live.until([&] { return inView(*stops.back()); }), "the last control is in view once focused");
+    const auto where = [&](const juce::Component& c) {
+      const auto box = content->getLocalArea(&c, c.getLocalBounds());
+      const int visible = vertical ? scroller->getMaximumVisibleHeight() : scroller->getMaximumVisibleWidth();
+      return "view " + juce::String(pos()) + "+" + juce::String(visible) + ", control " + box.toString() +
+             ", range " + juce::String(range()) + ", focused " + juce::String(live.focused() == &c ? "yes" : "no");
+    };
+    expect(live.until([&] { return inView(*stops.back()); }),
+           "the last control is in view once focused (" + where(*stops.back()) + ")");
     expect(pos() > 0, "the view moved to it");
     live.focus(*stops.front());
     expect(live.until([&] { return inView(*stops.front()); }), "and back to the first");
