@@ -88,7 +88,7 @@ A second way to see the chain: as a row of gear instead of tone artwork.
 
 ## Look and feel
 
-- **Skins:** Neural, Minimal, Vintage, Classic and Burning Church built in,
+- **Skins:** Neural, Minimal, Vintage, Classic, Burning Church and Ether built in,
   plus your own skins from a folder (see [SKINS.md](SKINS.md)). Skins can
   restyle the TONE3000 wordmark and colour the level meters.
 - **Knob values on hover**, and double-click a knob to reset it. Typing in a
@@ -96,22 +96,7 @@ A second way to see the chain: as a row of gear instead of tone artwork.
 - **Reduce animations** setting for slower machines.
 - Popups (like the Time FX rack) stay inside the window.
 
-## Fixes
-
-- **Security:** your TONE3000 login token is only ever sent to TONE3000's
-  own model servers, never to another site a preset's model link points at.
-- A rig module's name tooltip refreshes when its tone steps.
-
-## Notes
-
-- The installers are built in GitHub Actions and are **not code-signed**:
-  Windows SmartScreen and macOS Gatekeeper will warn the first time.
-- Presets and sessions from the official plugin load unchanged. New features
-  are off by default.
-- Not affiliated with or supported by TONE3000, so please don't send
-  TONE3000 support requests about this build.
-
-## Ether skin
+### Ether skin
 
 A psychedelic built-in skin (Settings → Plugin → Skin → Ether): a 60s/70s
 liquid light show over deep cosmic indigo. Drifting oil-projector colour and
@@ -130,3 +115,17 @@ fully still to full trip. It goes static with Reduce animations, with the
 system's reduced-motion setting, or when frames get slow; nothing flashes
 more than 3 times a second.
 
+## Fixes
+
+- **Security:** your TONE3000 login token is only ever sent to TONE3000's
+  own model servers, never to another site a preset's model link points at.
+- A rig module's name tooltip refreshes when its tone steps.
+
+## Notes
+
+- The installers are built in GitHub Actions and are **not code-signed**:
+  Windows SmartScreen and macOS Gatekeeper will warn the first time.
+- Presets and sessions from the official plugin load unchanged. New features
+  are off by default.
+- Not affiliated with or supported by TONE3000, so please don't send
+  TONE3000 support requests about this build.

@@ -8,6 +8,57 @@
 > installers from [Releases](https://github.com/NovodyInParticular/tone3000-plugin/releases).
 > Not affiliated with TONE3000.
 
+## Custom build features
+
+Everything below is added on top of the official v0.0.12 and is off by
+default, so presets and sessions from the official plugin load unchanged.
+Full details are in [CUSTOM-CHANGES.md](CUSTOM-CHANGES.md).
+
+**Effects**
+
+- **Glitch Engine**: tempo-synced stutter (1/4 to 1/64, triplets), random
+  stutters / reverses / dropouts / octave jumps with a repeatable seed,
+  freeze, bit-crush and sample-rate reduction. Stutter and Freeze can latch
+  or be held from a MIDI footswitch. No latency.
+- **Abyss Pitch**: -1 / -2 / +1 octave layers, a shift layer (±12 semitones
+  or dissonant intervals), detune, pitch bend with glide for an expression
+  pedal. Tight (11 ms) or Smooth (21 ms) tracking.
+- Both inserts get their own rig-view card; drag them before or after the
+  amps, or past each other to change their order.
+- **Clouds**: Mutable Instruments' granular processor (Density, Texture,
+  Blend on the faceplate; Freeze, Mode, Position, Size, Pitch, Spread,
+  Feedback and Reverb in its right-click panel).
+- **Time FX rack** after the cab: chorus / flanger, delay and reverb in any
+  of six orders.
+- **Dual cab IR** blending, **movable tone stack frequencies**, and
+  **guided input calibration**.
+
+**Tones**
+
+- Previous / next tone on every block, with the browser staying open.
+- Disk cache and prefetch for faster stepping; crossfaded model swaps.
+- MIDI next / previous tone per block.
+- A2-Lite suggestion when the CPU load stays high.
+- **Rig sharing**: save a whole rig as a file or a pasteable code.
+
+**Rig view and looks**
+
+- A rig view of the chain as gear: live output spectrum with the dry input
+  underneath, a draggable tone stack EQ curve, the amp's real waveform,
+  cable pulses, tuner, drag-to-reorder and a CPU meter.
+- **Skins**: Neural, Minimal, Vintage, Classic, Burning Church and the
+  psychedelic **Ether** (liquid light show, with a Trip Intensity setting
+  from still to full trip), plus your own skins (see [SKINS.md](SKINS.md)).
+- Knob values on hover, double-click to reset, and a Reduce animations
+  setting.
+
+Installers for Windows, macOS and Linux are on the
+[Releases page](https://github.com/NovodyInParticular/tone3000-plugin/releases).
+They are not code-signed, so Windows SmartScreen and macOS Gatekeeper warn
+the first time.
+
+## About the TONE3000 plugin
+
 A JUCE-based audio plugin (VST3, AU, CLAP, LV2, Standalone) that loads
 **Neural Amp Modeler (NAM)** captures and **impulse responses (IRs)** straight
 from [TONE3000](https://www.tone3000.com). No manual file downloads: browse
